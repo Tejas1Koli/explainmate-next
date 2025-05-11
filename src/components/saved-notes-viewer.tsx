@@ -23,23 +23,75 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription as EditDialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SavedNote } from '@/lib/notes-storage';
-import { getSavedNotes, deleteSavedNote, deleteAllSavedNotes } from '@/lib/notes-storage';
+import { getSavedNotes, deleteSavedNote, deleteAllSavedNotes, updateSavedNote } from '@/lib/notes-storage';
 import { cn } from '@/lib/utils';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+
+const editNoteSchema = z.object({
+  question: z.string().min(10, "Question must be at least 10 characters.").max(2000, "Question must be at most 2000 characters."),
+  explanation: z.string().min(10, "Explanation must be at least 10 characters."),
+});
+type EditNoteFormData = z.infer<typeof editNoteSchema>;
+
 
 export default function SavedNotesViewer() {
   const [notes, setNotes] = useState<SavedNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [noteToEdit, setNoteToEdit] = useState<SavedNote | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { toast } = useToast();
+
+  const editForm = useForm<EditNoteFormData>({
+    resolver: zodResolver(editNoteSchema),
+    defaultValues: {
+      question: '',
+      explanation: '',
+    },
+  });
 
   useEffect(() => {
     // Ensure this runs only on the client
     setNotes(getSavedNotes());
     setIsLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (isEditModalOpen && noteToEdit) {
+      editForm.reset({
+        question: noteToEdit.question,
+        explanation: noteToEdit.explanation,
+      });
+    } else if (!isEditModalOpen) {
+      // Clear noteToEdit and reset form when modal is closed
+      setNoteToEdit(null);
+      editForm.reset({ question: '', explanation: '' });
+    }
+  }, [isEditModalOpen, noteToEdit, editForm]);
+
 
   const handleDelete = (noteId: string) => {
     const success = deleteSavedNote(noteId);
@@ -60,6 +112,34 @@ export default function SavedNotesViewer() {
        toast({ title: "Error", description: "Failed to delete all notes.", variant: "destructive" });
     }
     setShowDeleteAllConfirm(false);
+  };
+
+  const handleOpenEditModal = (note: SavedNote) => {
+    setNoteToEdit(note);
+    setIsEditModalOpen(true);
+  };
+
+  const onSubmitEdit = async (data: EditNoteFormData) => {
+    if (!noteToEdit) return;
+
+    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.explanation);
+
+    if (updatedNote) {
+      setNotes(prevNotes => 
+        prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
+      );
+      toast({
+        title: "Note Updated",
+        description: "Your note has been successfully updated.",
+      });
+      setIsEditModalOpen(false); // This will trigger useEffect for cleanup
+    } else {
+      toast({
+        title: "Error Updating Note",
+        description: "Could not update the note. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   
   if (isLoading) {
@@ -116,15 +196,26 @@ export default function SavedNotesViewer() {
                     <CardTitle className="text-xl font-semibold text-foreground break-words flex-1">
                       {note.question}
                     </CardTitle>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => handleDelete(note.id)} 
-                      className="text-muted-foreground hover:text-destructive shrink-0 -mt-2 -mr-2"
-                      aria-label="Delete note"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0 -mt-2 -mr-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenEditModal(note)}
+                        className="text-muted-foreground hover:text-primary"
+                        aria-label="Edit note"
+                      >
+                        <Pencil className="h-5 w-5" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleDelete(note.id)} 
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label="Delete note"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    </div>
                   </div>
                   <CardDescription className="text-xs text-muted-foreground pt-1">
                     Saved on: {new Date(note.savedAt).toLocaleDateString()} {new Date(note.savedAt).toLocaleTimeString()}
@@ -168,6 +259,68 @@ export default function SavedNotesViewer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Edit Note</DialogTitle>
+            <EditDialogDescription>
+              Make changes to your saved question and explanation. Click save when you&apos;re done.
+            </EditDialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4 py-2">
+              <FormField
+                control={editForm.control}
+                name="question"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Question</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Edit your question"
+                        className="min-h-[100px] resize-y"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="explanation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Explanation</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Edit your explanation"
+                        className="min-h-[200px] resize-y"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button type="submit" disabled={editForm.formState.isSubmitting}>
+                  {editForm.formState.isSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

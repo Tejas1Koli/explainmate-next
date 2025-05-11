@@ -4,7 +4,7 @@ export interface SavedNote {
   id: string;
   question: string;
   explanation: string;
-  savedAt: string;
+  savedAt: string; // Represents the last modified timestamp
 }
 
 const NOTES_STORAGE_KEY = 'upscSavedNotes';
@@ -45,6 +45,33 @@ export function addSavedNote(question: string, explanation: string): SavedNote |
   }
 }
 
+export function updateSavedNote(noteId: string, newQuestion: string, newExplanation: string): SavedNote | null {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    console.warn("localStorage is not available for updating.");
+    return null;
+  }
+  try {
+    const notes = getSavedNotes();
+    const noteIndex = notes.findIndex(note => note.id === noteId);
+    if (noteIndex === -1) {
+      console.warn(`Note with id ${noteId} not found for updating.`);
+      return null;
+    }
+    const updatedNote: SavedNote = {
+      ...notes[noteIndex],
+      question: newQuestion,
+      explanation: newExplanation,
+      savedAt: new Date().toISOString(), // Update timestamp to reflect edit time
+    };
+    notes[noteIndex] = updatedNote;
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
+    return updatedNote;
+  } catch (error) {
+    console.error("Error updating note in localStorage:", error);
+    return null;
+  }
+}
+
 export function deleteSavedNote(noteId: string): boolean {
   if (typeof window === 'undefined' || !window.localStorage) {
     console.warn("localStorage is not available.");
@@ -73,8 +100,10 @@ export function deleteAllSavedNotes(): boolean {
   try {
     localStorage.removeItem(NOTES_STORAGE_KEY);
     return true;
-  } catch (error) {
+  } catch (error)
+    {
     console.error("Error deleting all notes from localStorage:", error);
     return false;
   }
 }
+
