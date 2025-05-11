@@ -4,6 +4,7 @@ export interface SavedNote {
   id: string;
   question: string;
   explanation: string;
+  userNotes?: string; // User's custom notes, optional
   savedAt: string; // Represents the last modified timestamp
 }
 
@@ -15,7 +16,9 @@ export function getSavedNotes(): SavedNote[] {
   }
   try {
     const notesJson = localStorage.getItem(NOTES_STORAGE_KEY);
-    return notesJson ? JSON.parse(notesJson) : [];
+    const parsedNotes = notesJson ? JSON.parse(notesJson) : [];
+    // Sort by savedAt descending to ensure newest are first
+    return parsedNotes.sort((a: SavedNote, b: SavedNote) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
   } catch (error) {
     console.error("Error parsing saved notes from localStorage:", error);
     localStorage.removeItem(NOTES_STORAGE_KEY); // Clear corrupted data
@@ -23,7 +26,7 @@ export function getSavedNotes(): SavedNote[] {
   }
 }
 
-export function addSavedNote(question: string, explanation: string): SavedNote | null {
+export function addSavedNote(question: string, explanation: string, userNotes?: string): SavedNote | null {
   if (typeof window === 'undefined' || !window.localStorage) {
     console.warn("localStorage is not available.");
     return null;
@@ -34,10 +37,12 @@ export function addSavedNote(question: string, explanation: string): SavedNote |
       id: crypto.randomUUID(),
       question,
       explanation,
+      userNotes: userNotes ?? '', // Default to empty string if undefined or null
       savedAt: new Date().toISOString(),
     };
-    notes.unshift(newNote); // Add to the beginning for most recent first
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
+    // Add to the beginning and re-sort to be absolutely sure, though getSavedNotes already sorts
+    const updatedNotes = [newNote, ...notes].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(updatedNotes));
     return newNote;
   } catch (error) {
     console.error("Error saving note to localStorage:", error);
@@ -45,7 +50,7 @@ export function addSavedNote(question: string, explanation: string): SavedNote |
   }
 }
 
-export function updateSavedNote(noteId: string, newQuestion: string, newExplanation: string): SavedNote | null {
+export function updateSavedNote(noteId: string, newQuestion: string, newExplanation: string, newUserNotes?: string): SavedNote | null {
   if (typeof window === 'undefined' || !window.localStorage) {
     console.warn("localStorage is not available for updating.");
     return null;
@@ -61,10 +66,13 @@ export function updateSavedNote(noteId: string, newQuestion: string, newExplanat
       ...notes[noteIndex],
       question: newQuestion,
       explanation: newExplanation,
+      userNotes: newUserNotes ?? '', // Default to empty string if undefined or null
       savedAt: new Date().toISOString(), // Update timestamp to reflect edit time
     };
     notes[noteIndex] = updatedNote;
-    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
+    // Re-sort after update to maintain order by savedAt
+    const updatedNotes = notes.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(updatedNotes));
     return updatedNote;
   } catch (error) {
     console.error("Error updating note in localStorage:", error);
@@ -106,4 +114,3 @@ export function deleteAllSavedNotes(): boolean {
     return false;
   }
 }
-

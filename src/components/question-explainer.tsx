@@ -18,7 +18,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Separator } from "@/components/ui/separator";
 import { Loader2, AlertCircle, Save } from 'lucide-react';
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
 import { useToast } from '@/hooks/use-toast';
@@ -32,6 +33,7 @@ const formSchema = z.object({
 
 export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
+  const [userNotes, setUserNotes] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -46,6 +48,7 @@ export default function QuestionExplainer() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     setExplanation(null);
+    setUserNotes(''); // Reset user notes when a new question is submitted
     setError(null);
     try {
       const input: ExplainUPSCQuestionInput = { question: values.question };
@@ -71,12 +74,13 @@ export default function QuestionExplainer() {
   function handleSaveNote() {
     if (!explanation) return;
     const questionText = form.getValues("question");
-    const savedNote = addSavedNote(questionText, explanation);
+    // userNotes is from component state
+    const savedNote = addSavedNote(questionText, explanation, userNotes);
 
     if (savedNote) {
       toast({
         title: "Note Saved!",
-        description: "Your explanation has been saved locally.",
+        description: "Your explanation and additional notes have been saved locally.",
       });
     } else {
       toast({
@@ -155,15 +159,9 @@ export default function QuestionExplainer() {
       {explanation && !isLoading && (
         <Card className="shadow-xl rounded-xl border-border/80">
           <CardHeader className="bg-card p-6">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
-              <Button onClick={handleSaveNote} variant="secondary" size="sm">
-                <Save className="mr-2 h-4 w-4" />
-                Save Note
-              </Button>
-            </div>
+            <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-6 space-y-6">
             <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
               <ReactMarkdown
                 remarkPlugins={[remarkMath]}
@@ -172,7 +170,25 @@ export default function QuestionExplainer() {
                 {explanation}
               </ReactMarkdown>
             </article>
+            
+            <Separator />
+
+            <div>
+              <h3 className="text-xl font-semibold text-foreground mb-3">Your Additional Notes</h3>
+              <Textarea
+                placeholder="Type or paste your notes based on the explanation above..."
+                className="min-h-[150px] text-base resize-y focus:ring-primary focus:border-primary rounded-md shadow-sm"
+                value={userNotes}
+                onChange={(e) => setUserNotes(e.target.value)}
+              />
+            </div>
           </CardContent>
+          <CardFooter className="p-6 border-t bg-card">
+            <Button onClick={handleSaveNote} variant="default" className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200">
+              <Save className="mr-2 h-4 w-4" />
+              Save Explanation & Your Notes
+            </Button>
+          </CardFooter>
         </Card>
       )}
     </div>

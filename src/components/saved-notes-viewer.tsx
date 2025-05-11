@@ -41,6 +41,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SavedNote } from '@/lib/notes-storage';
@@ -53,6 +54,7 @@ import * as z from 'zod';
 const editNoteSchema = z.object({
   question: z.string().min(10, "Question must be at least 10 characters.").max(2000, "Question must be at most 2000 characters."),
   explanation: z.string().min(10, "Explanation must be at least 10 characters."),
+  userNotes: z.string().optional(),
 });
 type EditNoteFormData = z.infer<typeof editNoteSchema>;
 
@@ -70,6 +72,7 @@ export default function SavedNotesViewer() {
     defaultValues: {
       question: '',
       explanation: '',
+      userNotes: '',
     },
   });
 
@@ -84,11 +87,11 @@ export default function SavedNotesViewer() {
       editForm.reset({
         question: noteToEdit.question,
         explanation: noteToEdit.explanation,
+        userNotes: noteToEdit.userNotes || '', // Ensure it's a string for the textarea
       });
     } else if (!isEditModalOpen) {
-      // Clear noteToEdit and reset form when modal is closed
       setNoteToEdit(null);
-      editForm.reset({ question: '', explanation: '' });
+      editForm.reset({ question: '', explanation: '', userNotes: '' });
     }
   }, [isEditModalOpen, noteToEdit, editForm]);
 
@@ -122,7 +125,7 @@ export default function SavedNotesViewer() {
   const onSubmitEdit = async (data: EditNoteFormData) => {
     if (!noteToEdit) return;
 
-    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.explanation);
+    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.explanation, data.userNotes);
 
     if (updatedNote) {
       setNotes(prevNotes => 
@@ -132,7 +135,7 @@ export default function SavedNotesViewer() {
         title: "Note Updated",
         description: "Your note has been successfully updated.",
       });
-      setIsEditModalOpen(false); // This will trigger useEffect for cleanup
+      setIsEditModalOpen(false); 
     } else {
       toast({
         title: "Error Updating Note",
@@ -221,7 +224,7 @@ export default function SavedNotesViewer() {
                     Saved on: {new Date(note.savedAt).toLocaleDateString()} {new Date(note.savedAt).toLocaleTimeString()}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="p-6">
+                <CardContent className="p-6 space-y-4">
                   <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
                     <ReactMarkdown
                       remarkPlugins={[remarkMath]}
@@ -230,6 +233,22 @@ export default function SavedNotesViewer() {
                       {note.explanation}
                     </ReactMarkdown>
                   </article>
+                  {(note.userNotes && note.userNotes.trim() !== '') && (
+                    <>
+                      <Separator className="my-4" />
+                      <div>
+                        <h4 className="text-lg font-semibold text-foreground mb-2">Your Additional Notes:</h4>
+                        <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20 bg-muted/20 p-4 rounded-md shadow-inner">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {note.userNotes}
+                          </ReactMarkdown>
+                        </article>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -265,11 +284,11 @@ export default function SavedNotesViewer() {
           <DialogHeader>
             <DialogTitle>Edit Note</DialogTitle>
             <EditDialogDescription>
-              Make changes to your saved question and explanation. Click save when you&apos;re done.
+              Make changes to your saved question, AI explanation, and your additional notes. Click save when you&apos;re done.
             </EditDialogDescription>
           </DialogHeader>
           <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4 py-2">
+            <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
               <FormField
                 control={editForm.control}
                 name="question"
@@ -292,10 +311,10 @@ export default function SavedNotesViewer() {
                 name="explanation"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Explanation</FormLabel>
+                    <FormLabel>AI Explanation</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Edit your explanation"
+                        placeholder="Edit AI explanation"
                         className="min-h-[200px] resize-y"
                         {...field}
                       />
@@ -304,7 +323,25 @@ export default function SavedNotesViewer() {
                   </FormItem>
                 )}
               />
-              <DialogFooter>
+              <FormField
+                control={editForm.control}
+                name="userNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Your Additional Notes</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Edit your additional notes (optional)"
+                        className="min-h-[150px] resize-y"
+                        {...field}
+                        value={field.value ?? ''} // Handle undefined from optional field
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter className="pt-4 sticky bottom-0 bg-background">
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
                     Cancel
