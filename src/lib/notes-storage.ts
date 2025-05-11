@@ -3,7 +3,6 @@
 export interface SavedNote {
   id: string;
   question: string;
-  explanation: string;
   userNotes?: string; // User's custom notes, optional
   savedAt: string; // Represents the last modified timestamp
 }
@@ -26,7 +25,7 @@ export function getSavedNotes(): SavedNote[] {
   }
 }
 
-export function addSavedNote(question: string, explanation: string, userNotes?: string): SavedNote | null {
+export function addSavedNote(question: string, userNotes?: string): SavedNote | null {
   if (typeof window === 'undefined' || !window.localStorage) {
     console.warn("localStorage is not available.");
     return null;
@@ -36,7 +35,6 @@ export function addSavedNote(question: string, explanation: string, userNotes?: 
     const newNote: SavedNote = {
       id: crypto.randomUUID(),
       question,
-      explanation,
       userNotes: userNotes ?? '', // Default to empty string if undefined or null
       savedAt: new Date().toISOString(),
     };
@@ -50,7 +48,7 @@ export function addSavedNote(question: string, explanation: string, userNotes?: 
   }
 }
 
-export function updateSavedNote(noteId: string, newQuestion: string, newExplanation: string, newUserNotes?: string): SavedNote | null {
+export function updateSavedNote(noteId: string, newQuestion: string, newUserNotes?: string): SavedNote | null {
   if (typeof window === 'undefined' || !window.localStorage) {
     console.warn("localStorage is not available for updating.");
     return null;
@@ -65,7 +63,6 @@ export function updateSavedNote(noteId: string, newQuestion: string, newExplanat
     const updatedNote: SavedNote = {
       ...notes[noteIndex],
       question: newQuestion,
-      explanation: newExplanation,
       userNotes: newUserNotes ?? '', // Default to empty string if undefined or null
       savedAt: new Date().toISOString(), // Update timestamp to reflect edit time
     };

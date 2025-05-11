@@ -53,7 +53,6 @@ import * as z from 'zod';
 
 const editNoteSchema = z.object({
   question: z.string().min(10, "Question must be at least 10 characters.").max(2000, "Question must be at most 2000 characters."),
-  explanation: z.string().min(10, "Explanation must be at least 10 characters."),
   userNotes: z.string().optional(),
 });
 type EditNoteFormData = z.infer<typeof editNoteSchema>;
@@ -71,7 +70,6 @@ export default function SavedNotesViewer() {
     resolver: zodResolver(editNoteSchema),
     defaultValues: {
       question: '',
-      explanation: '',
       userNotes: '',
     },
   });
@@ -86,12 +84,11 @@ export default function SavedNotesViewer() {
     if (isEditModalOpen && noteToEdit) {
       editForm.reset({
         question: noteToEdit.question,
-        explanation: noteToEdit.explanation,
         userNotes: noteToEdit.userNotes || '', // Ensure it's a string for the textarea
       });
     } else if (!isEditModalOpen) {
       setNoteToEdit(null);
-      editForm.reset({ question: '', explanation: '', userNotes: '' });
+      editForm.reset({ question: '', userNotes: '' });
     }
   }, [isEditModalOpen, noteToEdit, editForm]);
 
@@ -125,7 +122,7 @@ export default function SavedNotesViewer() {
   const onSubmitEdit = async (data: EditNoteFormData) => {
     if (!noteToEdit) return;
 
-    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.explanation, data.userNotes);
+    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.userNotes);
 
     if (updatedNote) {
       setNotes(prevNotes => 
@@ -225,17 +222,8 @@ export default function SavedNotesViewer() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
-                  <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                    >
-                      {note.explanation}
-                    </ReactMarkdown>
-                  </article>
-                  {(note.userNotes && note.userNotes.trim() !== '') && (
+                  {(note.userNotes && note.userNotes.trim() !== '') ? (
                     <>
-                      <Separator className="my-4" />
                       <div>
                         <h4 className="text-lg font-semibold text-foreground mb-2">Your Additional Notes:</h4>
                         <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20 bg-muted/20 p-4 rounded-md shadow-inner">
@@ -248,6 +236,8 @@ export default function SavedNotesViewer() {
                         </article>
                       </div>
                     </>
+                  ) : (
+                    <p className="text-muted-foreground italic">No additional notes were saved for this question.</p>
                   )}
                 </CardContent>
               </Card>
@@ -284,7 +274,7 @@ export default function SavedNotesViewer() {
           <DialogHeader>
             <DialogTitle>Edit Note</DialogTitle>
             <EditDialogDescription>
-              Make changes to your saved question, AI explanation, and your additional notes. Click save when you&apos;re done.
+              Make changes to your saved question and your additional notes. Click save when you&apos;re done.
             </EditDialogDescription>
           </DialogHeader>
           <Form {...editForm}>
@@ -299,23 +289,6 @@ export default function SavedNotesViewer() {
                       <Textarea
                         placeholder="Edit your question"
                         className="min-h-[100px] resize-y"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="explanation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>AI Explanation</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Edit AI explanation"
-                        className="min-h-[200px] resize-y"
                         {...field}
                       />
                     </FormControl>

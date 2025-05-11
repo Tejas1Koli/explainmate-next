@@ -72,15 +72,14 @@ export default function QuestionExplainer() {
   }
 
   function handleSaveNote() {
-    if (!explanation) return;
     const questionText = form.getValues("question");
-    // userNotes is from component state
-    const savedNote = addSavedNote(questionText, explanation, userNotes);
+    // userNotes is from component state. Explanation is not saved.
+    const savedNote = addSavedNote(questionText, userNotes);
 
     if (savedNote) {
       toast({
         title: "Note Saved!",
-        description: "Your explanation and additional notes have been saved locally.",
+        description: "Your question and additional notes have been saved locally.",
       });
     } else {
       toast({
@@ -186,7 +185,7 @@ export default function QuestionExplainer() {
           <CardFooter className="p-6 border-t bg-card">
             <Button onClick={handleSaveNote} variant="default" className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200">
               <Save className="mr-2 h-4 w-4" />
-              Save Explanation & Your Notes
+              Save Question &amp; Your Notes
             </Button>
           </CardFooter>
         </Card>
