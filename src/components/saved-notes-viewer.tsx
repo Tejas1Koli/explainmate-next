@@ -6,6 +6,10 @@ import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import ReactDOM from 'react-dom/client';
+
 import {
   Card,
   CardContent,
@@ -42,7 +46,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil } from 'lucide-react';
+import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SavedNote } from '@/lib/notes-storage';
 import { getSavedNotes, deleteSavedNote, deleteAllSavedNotes, updateSavedNote } from '@/lib/notes-storage';
@@ -64,6 +68,7 @@ export default function SavedNotesViewer() {
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [noteToEdit, setNoteToEdit] = useState<SavedNote | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<string | null>(null); // Stores ID of note being exported
   const { toast } = useToast();
 
   const editForm = useForm<EditNoteFormData>({
@@ -84,7 +89,7 @@ export default function SavedNotesViewer() {
     if (isEditModalOpen && noteToEdit) {
       editForm.reset({
         question: noteToEdit.question,
-        userNotes: noteToEdit.userNotes || '', // Ensure it's a string for the textarea
+        userNotes: noteToEdit.userNotes || '', 
       });
     } else if (!isEditModalOpen) {
       setNoteToEdit(null);
@@ -139,6 +144,125 @@ export default function SavedNotesViewer() {
         description: "Could not update the note. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleExportToPdf = async (note: SavedNote) => {
+    setIsExportingPdf(note.id);
+    const noteElementId = `note-to-export-${note.id}`;
+    let tempDiv = document.getElementById(noteElementId);
+    let newTempDivCreated = false;
+    let root: ReactDOM.Root | null = null;
+  
+    if (!tempDiv) {
+      tempDiv = document.createElement('div');
+      tempDiv.id = noteElementId;
+      tempDiv.style.position = 'absolute';
+      tempDiv.style.left = '-9999px';
+      tempDiv.style.width = '800px'; // A4 width is approx 210mm, using larger px value for better canvas rendering
+      tempDiv.style.background = 'white'; // Ensure canvas has a background
+      // Ensure fonts and KaTeX styles are available by copying relevant layout classes or directly styling
+      tempDiv.className = 'font-sans'; // Use a class that defines your app's font
+      document.body.appendChild(tempDiv);
+      newTempDivCreated = true;
+    }
+  
+    const contentToRender = (
+      <div className="p-5 bg-white"> {/* Padding for content within the PDF-able area */}
+        <h2 className="text-xl font-bold mb-2 text-gray-800">Question:</h2>
+        <p className="text-base text-gray-700 mb-4 whitespace-pre-wrap break-words">{note.question}</p>
+        <hr className="my-4 border-gray-300"/>
+        <h2 className="text-xl font-bold mb-2 text-gray-800">Your Notes:</h2>
+        <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none text-gray-700">
+          <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+            {note.userNotes || "No additional notes."}
+          </ReactMarkdown>
+        </div>
+      </div>
+    );
+    
+    root = ReactDOM.createRoot(tempDiv);
+    root.render(contentToRender);
+  
+    // Wait for rendering, especially KaTeX
+    await new Promise(resolve => setTimeout(resolve, 1000)); 
+  
+    try {
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2, 
+        useCORS: true,
+        backgroundColor: '#ffffff', 
+        logging: false, // reduce console noise
+        onclone: (document) => {
+          // Ensure KaTeX stylesheet is present in the cloned document for html2canvas
+          // This is crucial if global styles aren't perfectly picked up by html2canvas
+          let katexStylesheet = document.getElementById('katex-stylesheet');
+          if (!katexStylesheet) {
+            katexStylesheet = document.createElement('link');
+            katexStylesheet.id = 'katex-stylesheet';
+            katexStylesheet.rel = 'stylesheet';
+            katexStylesheet.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'; // Use specific version from your project if possible
+            document.head.appendChild(katexStylesheet);
+          }
+        }
+      });
+  
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4',
+      });
+  
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const margin = 10; // 10mm margin
+      const availableWidth = pdfWidth - 2 * margin;
+      const availableHeight = pdfHeight - 2 * margin;
+      
+      let imgRenderWidth = imgProps.width;
+      let imgRenderHeight = imgProps.height;
+      const aspectRatio = imgProps.width / imgProps.height;
+
+      if (imgRenderWidth > availableWidth) {
+        imgRenderWidth = availableWidth;
+        imgRenderHeight = imgRenderWidth / aspectRatio;
+      }
+      if (imgRenderHeight > availableHeight) {
+        imgRenderHeight = availableHeight;
+        imgRenderWidth = imgRenderHeight * aspectRatio;
+      }
+      
+      // If content still exceeds one page after scaling to fit width/height, it will be truncated or split.
+      // For simplicity, this example adds it as one image. Multi-page would require more logic.
+      const xOffset = (pdfWidth - imgRenderWidth) / 2;
+      const yOffset = margin;
+  
+      pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgRenderWidth, imgRenderHeight);
+      pdf.save(`upsc_note_${note.id.substring(0,8)}.pdf`);
+  
+      toast({
+          title: "PDF Exported",
+          description: "The note has been exported as a PDF."
+      });
+  
+    } catch (error) {
+      console.error("Error exporting to PDF:", error);
+      toast({
+        title: "PDF Export Error",
+        description: "Could not export the note to PDF. Check console for details.",
+        variant: "destructive",
+      });
+    } finally {
+      if (root) {
+        root.unmount();
+      }
+      if (newTempDivCreated && tempDiv && tempDiv.parentNode) {
+          tempDiv.parentNode.removeChild(tempDiv);
+      }
+      setIsExportingPdf(null);
     }
   };
   
@@ -196,13 +320,24 @@ export default function SavedNotesViewer() {
                     <CardTitle className="text-xl font-semibold text-foreground break-words flex-1">
                       {note.question}
                     </CardTitle>
-                    <div className="flex items-center gap-1 shrink-0 -mt-2 -mr-2">
+                    <div className="flex items-center gap-1 shrink-0 -mt-1 -mr-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleExportToPdf(note)}
+                        disabled={isExportingPdf === note.id}
+                        className="text-muted-foreground hover:text-primary"
+                        aria-label="Export to PDF"
+                      >
+                        {isExportingPdf === note.id ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => handleOpenEditModal(note)}
                         className="text-muted-foreground hover:text-primary"
                         aria-label="Edit note"
+                        disabled={!!isExportingPdf}
                       >
                         <Pencil className="h-5 w-5" />
                       </Button>
@@ -212,6 +347,7 @@ export default function SavedNotesViewer() {
                         onClick={() => handleDelete(note.id)} 
                         className="text-muted-foreground hover:text-destructive"
                         aria-label="Delete note"
+                        disabled={!!isExportingPdf}
                       >
                         <Trash2 className="h-5 w-5" />
                       </Button>
@@ -223,7 +359,7 @@ export default function SavedNotesViewer() {
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
                   {(note.userNotes && note.userNotes.trim() !== '') ? (
-                     <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
+                     <article className="prose prose-sm sm:prose-base lg:prose-lg dark:prose-invert max-w-none selection:bg-primary/20">
                       <ReactMarkdown
                         remarkPlugins={[remarkMath]}
                         rehypePlugins={[rehypeKatex]}
@@ -302,7 +438,7 @@ export default function SavedNotesViewer() {
                         placeholder="Edit your additional notes (optional)"
                         className="min-h-[150px] resize-y"
                         {...field}
-                        value={field.value ?? ''} // Handle undefined from optional field
+                        value={field.value ?? ''} 
                       />
                     </FormControl>
                     <FormMessage />
