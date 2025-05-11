@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -41,7 +42,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SavedNote } from '@/lib/notes-storage';
@@ -223,19 +223,14 @@ export default function SavedNotesViewer() {
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
                   {(note.userNotes && note.userNotes.trim() !== '') ? (
-                    <>
-                      <div>
-                        <h4 className="text-lg font-semibold text-foreground mb-2">Your Additional Notes:</h4>
-                        <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20 bg-muted/20 p-4 rounded-md shadow-inner">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                          >
-                            {note.userNotes}
-                          </ReactMarkdown>
-                        </article>
-                      </div>
-                    </>
+                     <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                      >
+                        {note.userNotes}
+                      </ReactMarkdown>
+                    </article>
                   ) : (
                     <p className="text-muted-foreground italic">No additional notes were saved for this question.</p>
                   )}
@@ -334,3 +329,4 @@ export default function SavedNotesViewer() {
     </div>
   );
 }
+
