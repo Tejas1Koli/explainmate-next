@@ -16,8 +16,10 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle, Save } from 'lucide-react'; // Added AlertCircle and Save
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
+import { useToast } from '@/hooks/use-toast'; // Added useToast
+import { addSavedNote } from '@/lib/notes-storage'; // Added notes-storage functions
 
 const formSchema = z.object({
   question: z.string()
@@ -29,6 +31,7 @@ export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -49,13 +52,35 @@ export default function QuestionExplainer() {
       console.error("Error fetching explanation:", err);
       let errorMessage = "Failed to generate explanation. Please check your connection or try again later.";
       if (err instanceof Error) {
-        // Potentially check for specific error messages from Genkit if available
-        // For now, a generic message based on error type
         errorMessage = `An error occurred: ${err.message}. Please try again.`;
       }
       setError(errorMessage);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  function handleSaveNote() {
+    if (!explanation) return;
+    const questionText = form.getValues("question");
+    const savedNote = addSavedNote(questionText, explanation);
+
+    if (savedNote) {
+      toast({
+        title: "Note Saved!",
+        description: "Your explanation has been saved locally.",
+      });
+    } else {
+      toast({
+        title: "Error Saving Note",
+        description: "Could not save the note. LocalStorage might be unavailable or full.",
+        variant: "destructive",
+      });
     }
   }
 
@@ -113,8 +138,8 @@ export default function QuestionExplainer() {
       {error && (
         <Card className="shadow-lg rounded-xl border-destructive bg-destructive/5">
           <CardHeader className="p-4">
-            <CardTitle className="text-destructive text-lg font-semibold">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-2 h-5 w-5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <CardTitle className="text-destructive text-lg font-semibold flex items-center">
+              <AlertCircle className="inline-block mr-2 h-5 w-5" />
               Error
             </CardTitle>
           </CardHeader>
@@ -124,10 +149,16 @@ export default function QuestionExplainer() {
         </Card>
       )}
 
-      {explanation && (
+      {explanation && !isLoading && (
         <Card className="shadow-xl rounded-xl border-border/80">
           <CardHeader className="bg-card p-6">
-            <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
+              <Button onClick={handleSaveNote} variant="secondary" size="sm">
+                <Save className="mr-2 h-4 w-4" />
+                Save Note
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-6">
             <div className="max-w-none whitespace-pre-wrap text-foreground/90 leading-relaxed text-base selection:bg-primary/20">
