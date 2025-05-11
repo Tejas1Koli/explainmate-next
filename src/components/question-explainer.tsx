@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,10 +19,10 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, AlertCircle, Save } from 'lucide-react'; // Added AlertCircle and Save
+import { Loader2, AlertCircle, Save } from 'lucide-react';
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
-import { useToast } from '@/hooks/use-toast'; // Added useToast
-import { addSavedNote } from '@/lib/notes-storage'; // Added notes-storage functions
+import { useToast } from '@/hooks/use-toast';
+import { addSavedNote } from '@/lib/notes-storage';
 
 const formSchema = z.object({
   question: z.string()
@@ -92,7 +95,7 @@ export default function QuestionExplainer() {
             UPSC Insight
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground text-md pt-1">
-            Enter your UPSC-related question and get a clear, concise explanation.
+            Enter your UPSC-related question and get a clear, concise explanation with rich formatting.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
@@ -106,7 +109,7 @@ export default function QuestionExplainer() {
                     <FormLabel className="text-base font-semibold text-foreground">Your Question:</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="e.g., Discuss the socio-economic impact of Green Revolution in India."
+                        placeholder="e.g., Discuss the socio-economic impact of Green Revolution in India, including relevant formulas like $y = mx + c$."
                         className="min-h-[120px] text-base resize-y focus:ring-primary focus:border-primary rounded-md shadow-sm"
                         {...field}
                       />
@@ -161,9 +164,14 @@ export default function QuestionExplainer() {
             </div>
           </CardHeader>
           <CardContent className="p-6">
-            <div className="max-w-none whitespace-pre-wrap text-foreground/90 leading-relaxed text-base selection:bg-primary/20">
-              {explanation}
-            </div>
+            <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {explanation}
+              </ReactMarkdown>
+            </article>
           </CardContent>
         </Card>
       )}

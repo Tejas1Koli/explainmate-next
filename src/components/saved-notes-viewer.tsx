@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import {
   Card,
   CardContent,
@@ -128,9 +131,14 @@ export default function SavedNotesViewer() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="max-w-none whitespace-pre-wrap text-foreground/90 leading-relaxed text-sm selection:bg-primary/20">
-                    {note.explanation}
-                  </div>
+                  <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                    >
+                      {note.explanation}
+                    </ReactMarkdown>
+                  </article>
                 </CardContent>
               </Card>
             ))}
