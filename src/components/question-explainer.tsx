@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -7,6 +8,7 @@ import * as z from 'zod';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import Link from 'next/link';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +22,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save } from 'lucide-react';
+import { Loader2, AlertCircle, Save, LogIn } from 'lucide-react';
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
+import { useAuth } from '@/contexts/auth-context';
 
 const formSchema = z.object({
   question: z.string()
@@ -34,9 +37,11 @@ const formSchema = z.object({
 export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { currentUser, loading: authLoading } = useAuth();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -45,10 +50,10 @@ export default function QuestionExplainer() {
     },
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsLoading(true);
+  async function onSubmitExplanation(values: z.infer<typeof formSchema>) {
+    setIsLoadingExplanation(true);
     setExplanation(null);
-    setUserNotes(''); // Reset user notes when a new question is submitted
+    setUserNotes(''); 
     setError(null);
     try {
       const input: ExplainUPSCQuestionInput = { question: values.question };
@@ -67,24 +72,33 @@ export default function QuestionExplainer() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoadingExplanation(false);
     }
   }
 
-  function handleSaveNote() {
+  async function handleSaveNote() {
+    if (!currentUser) {
+      toast({
+        title: "Login Required",
+        description: "Please login to save your notes.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSavingNote(true);
     const questionText = form.getValues("question");
-    // userNotes is from component state. Explanation is not saved.
-    const savedNote = addSavedNote(questionText, userNotes);
+    const savedNote = await addSavedNote(currentUser.uid, questionText, userNotes);
+    setIsSavingNote(false);
 
     if (savedNote) {
       toast({
         title: "Note Saved!",
-        description: "Your question and additional notes have been saved locally.",
+        description: "Your question and additional notes have been saved.",
       });
     } else {
       toast({
         title: "Error Saving Note",
-        description: "Could not save the note. LocalStorage might be unavailable or full.",
+        description: "Could not save the note. Please try again.",
         variant: "destructive",
       });
     }
@@ -103,7 +117,7 @@ export default function QuestionExplainer() {
         </CardHeader>
         <CardContent className="p-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmitExplanation)} className="space-y-6">
               <FormField
                 control={form.control}
                 name="question"
@@ -123,11 +137,11 @@ export default function QuestionExplainer() {
               />
               <Button 
                 type="submit" 
-                disabled={isLoading} 
+                disabled={isLoadingExplanation || authLoading} 
                 className="w-full text-lg py-3 rounded-md shadow-md hover:shadow-lg transition-shadow duration-200"
                 variant="default"
               >
-                {isLoading ? (
+                {isLoadingExplanation ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                     Generating Explanation...
@@ -155,7 +169,7 @@ export default function QuestionExplainer() {
         </Card>
       )}
 
-      {explanation && !isLoading && (
+      {explanation && !isLoadingExplanation && (
         <Card className="shadow-xl rounded-xl border-border/80">
           <CardHeader className="bg-card p-6">
             <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
@@ -179,14 +193,38 @@ export default function QuestionExplainer() {
                 className="min-h-[150px] text-base resize-y focus:ring-primary focus:border-primary rounded-md shadow-sm"
                 value={userNotes}
                 onChange={(e) => setUserNotes(e.target.value)}
+                disabled={!currentUser || authLoading}
               />
+               {!currentUser && !authLoading && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  <Link href="/login" className="text-primary hover:underline">Login</Link> to save your notes.
+                </p>
+              )}
             </div>
           </CardContent>
           <CardFooter className="p-6 border-t bg-card">
-            <Button onClick={handleSaveNote} variant="default" className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200">
-              <Save className="mr-2 h-4 w-4" />
-              Save Question &amp; Your Notes
-            </Button>
+            {currentUser && !authLoading ? (
+              <Button 
+                onClick={handleSaveNote} 
+                variant="default" 
+                className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200"
+                disabled={isSavingNote}
+              >
+                {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Question &amp; Your Notes
+              </Button>
+            ) : authLoading ? (
+                <Button className="w-full sm:w-auto ml-auto" disabled>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                </Button>
+            ): (
+              <Link href="/login" passHref className="w-full sm:w-auto ml-auto">
+                <Button variant="outline" className="w-full shadow-md hover:shadow-lg transition-shadow duration-200">
+                  <LogIn className="mr-2 h-4 w-4" /> Login to Save Notes
+                </Button>
+              </Link>
+            )}
           </CardFooter>
         </Card>
       )}

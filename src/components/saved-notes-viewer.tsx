@@ -1,8 +1,9 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -46,7 +47,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil, Download } from 'lucide-react';
+import { Loader2, Trash2, FileText, Home, ListChecks, AlertTriangle, Pencil, Download, LogIn } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SavedNote } from '@/lib/notes-storage';
 import { getSavedNotes, deleteSavedNote, deleteAllSavedNotes, updateSavedNote } from '@/lib/notes-storage';
@@ -54,6 +55,9 @@ import { cn } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useAuth } from '@/contexts/auth-context';
+import type { Timestamp } from 'firebase/firestore';
+
 
 const editNoteSchema = z.object({
   question: z.string().min(10, "Question must be at least 10 characters.").max(2000, "Question must be at most 2000 characters."),
@@ -64,12 +68,14 @@ type EditNoteFormData = z.infer<typeof editNoteSchema>;
 
 export default function SavedNotesViewer() {
   const [notes, setNotes] = useState<SavedNote[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(true);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
   const [noteToEdit, setNoteToEdit] = useState<SavedNote | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isExportingPdf, setIsExportingPdf] = useState<string | null>(null); // Stores ID of note being exported
+  const [isExportingPdf, setIsExportingPdf] = useState<string | null>(null);
   const { toast } = useToast();
+  const { currentUser, loading: authLoading } = useAuth();
+  const router = useRouter();
 
   const editForm = useForm<EditNoteFormData>({
     resolver: zodResolver(editNoteSchema),
@@ -79,11 +85,31 @@ export default function SavedNotesViewer() {
     },
   });
 
+  const fetchNotes = useCallback(async () => {
+    if (currentUser) {
+      setIsLoadingNotes(true);
+      const userNotes = await getSavedNotes(currentUser.uid);
+      // Sort by savedAt descending (Firebase Timestamps can be compared directly or via .toMillis())
+      userNotes.sort((a, b) => b.savedAt.toMillis() - a.savedAt.toMillis());
+      setNotes(userNotes);
+      setIsLoadingNotes(false);
+    } else {
+      setNotes([]);
+      setIsLoadingNotes(false);
+    }
+  }, [currentUser]);
+
   useEffect(() => {
-    // Ensure this runs only on the client
-    setNotes(getSavedNotes());
-    setIsLoading(false);
-  }, []);
+    if (!authLoading) {
+      if (currentUser) {
+        fetchNotes();
+      } else {
+        // Redirect to login if not authenticated and not loading
+        toast({ title: "Login Required", description: "Please login to view your saved notes.", variant: "default" });
+        router.push('/login');
+      }
+    }
+  }, [currentUser, authLoading, fetchNotes, router, toast]);
 
   useEffect(() => {
     if (isEditModalOpen && noteToEdit) {
@@ -98,8 +124,9 @@ export default function SavedNotesViewer() {
   }, [isEditModalOpen, noteToEdit, editForm]);
 
 
-  const handleDelete = (noteId: string) => {
-    const success = deleteSavedNote(noteId);
+  const handleDelete = async (noteId: string) => {
+    if (!currentUser) return;
+    const success = await deleteSavedNote(currentUser.uid, noteId);
     if (success) {
       setNotes(prevNotes => prevNotes.filter(note => note.id !== noteId));
       toast({ title: "Note Deleted", description: "The note has been successfully deleted." });
@@ -108,8 +135,9 @@ export default function SavedNotesViewer() {
     }
   };
 
-  const triggerDeleteAll = () => {
-    const success = deleteAllSavedNotes();
+  const triggerDeleteAll = async () => {
+    if (!currentUser) return;
+    const success = await deleteAllSavedNotes(currentUser.uid);
      if (success) {
       setNotes([]);
       toast({ title: "All Notes Deleted", description: "All saved notes have been cleared." });
@@ -125,14 +153,13 @@ export default function SavedNotesViewer() {
   };
 
   const onSubmitEdit = async (data: EditNoteFormData) => {
-    if (!noteToEdit) return;
+    if (!noteToEdit || !currentUser) return;
 
-    const updatedNote = updateSavedNote(noteToEdit.id, data.question, data.userNotes);
+    const updatedNoteData = await updateSavedNote(currentUser.uid, noteToEdit.id, data.question, data.userNotes);
 
-    if (updatedNote) {
-      setNotes(prevNotes => 
-        prevNotes.map(n => n.id === updatedNote.id ? updatedNote : n).sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime())
-      );
+    if (updatedNoteData) {
+      // Refetch or update locally. Fetching ensures consistency with server-generated timestamps.
+      await fetchNotes(); 
       toast({
         title: "Note Updated",
         description: "Your note has been successfully updated.",
@@ -147,6 +174,12 @@ export default function SavedNotesViewer() {
     }
   };
 
+  const formatFirebaseTimestamp = (timestamp: Timestamp | string): string => {
+    if (!timestamp) return 'N/A';
+    const date = (timestamp as Timestamp).toDate ? (timestamp as Timestamp).toDate() : new Date(timestamp as string);
+    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
+
   const handleExportToPdf = async (note: SavedNote) => {
     setIsExportingPdf(note.id);
     const noteElementId = `note-to-export-${note.id}`;
@@ -159,16 +192,15 @@ export default function SavedNotesViewer() {
       tempDiv.id = noteElementId;
       tempDiv.style.position = 'absolute';
       tempDiv.style.left = '-9999px';
-      tempDiv.style.width = '800px'; // A4 width is approx 210mm, using larger px value for better canvas rendering
-      tempDiv.style.background = 'white'; // Ensure canvas has a background
-      // Ensure fonts and KaTeX styles are available by copying relevant layout classes or directly styling
-      tempDiv.className = 'font-sans'; // Use a class that defines your app's font
+      tempDiv.style.width = '800px'; 
+      tempDiv.style.background = 'white'; 
+      tempDiv.className = 'font-sans'; 
       document.body.appendChild(tempDiv);
       newTempDivCreated = true;
     }
   
     const contentToRender = (
-      <div className="p-5 bg-white"> {/* Padding for content within the PDF-able area */}
+      <div className="p-5 bg-white">
         <h2 className="text-xl font-bold mb-2 text-gray-800">Question:</h2>
         <p className="text-base text-gray-700 mb-4 whitespace-pre-wrap break-words">{note.question}</p>
         <hr className="my-4 border-gray-300"/>
@@ -184,24 +216,21 @@ export default function SavedNotesViewer() {
     root = ReactDOM.createRoot(tempDiv);
     root.render(contentToRender);
   
-    // Wait for rendering, especially KaTeX
     await new Promise(resolve => setTimeout(resolve, 1000)); 
   
     try {
       const canvas = await html2canvas(tempDiv, {
-        scale: 2, 
+        scale: 1, // Reduced scale for potentially faster rendering
         useCORS: true,
         backgroundColor: '#ffffff', 
-        logging: false, // reduce console noise
+        logging: false,
         onclone: (document) => {
-          // Ensure KaTeX stylesheet is present in the cloned document for html2canvas
-          // This is crucial if global styles aren't perfectly picked up by html2canvas
           let katexStylesheet = document.getElementById('katex-stylesheet');
           if (!katexStylesheet) {
             katexStylesheet = document.createElement('link');
             katexStylesheet.id = 'katex-stylesheet';
             katexStylesheet.rel = 'stylesheet';
-            katexStylesheet.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css'; // Use specific version from your project if possible
+            katexStylesheet.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
             document.head.appendChild(katexStylesheet);
           }
         }
@@ -218,7 +247,7 @@ export default function SavedNotesViewer() {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       
-      const margin = 10; // 10mm margin
+      const margin = 10; 
       const availableWidth = pdfWidth - 2 * margin;
       const availableHeight = pdfHeight - 2 * margin;
       
@@ -235,8 +264,6 @@ export default function SavedNotesViewer() {
         imgRenderWidth = imgRenderHeight * aspectRatio;
       }
       
-      // If content still exceeds one page after scaling to fit width/height, it will be truncated or split.
-      // For simplicity, this example adds it as one image. Multi-page would require more logic.
       const xOffset = (pdfWidth - imgRenderWidth) / 2;
       const yOffset = margin;
   
@@ -266,17 +293,32 @@ export default function SavedNotesViewer() {
     }
   };
   
-  if (isLoading) {
+  if (authLoading || (isLoadingNotes && currentUser)) {
     return (
       <div className="flex flex-col justify-center items-center min-h-[calc(100vh-200px)] w-full max-w-3xl mx-auto p-4 md:p-6">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg text-muted-foreground">Loading saved notes...</p>
+        <p className="text-lg text-muted-foreground">Loading notes...</p>
       </div>
     );
   }
 
+  if (!currentUser && !authLoading) {
+     // This case should ideally be handled by the useEffect redirect, but as a fallback:
+    return (
+      <div className="flex flex-col justify-center items-center min-h-[calc(100vh-200px)] w-full max-w-3xl mx-auto p-4 md:p-6 text-center">
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+        <p className="text-xl font-semibold mb-2">Access Denied</p>
+        <p className="text-muted-foreground mb-4">You need to be logged in to view your saved notes.</p>
+        <Link href="/login" passHref>
+          <Button variant="default"><LogIn className="mr-2 h-4 w-4" />Login</Button>
+        </Link>
+      </div>
+    );
+  }
+
+
   return (
-    <div className="w-full max-w-3xl mx-auto p-2 md:p-0 space-y-6">
+    <div className="w-full max-w-3xl mx-auto p-2 md:p-0 space-y-6 my-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-6">
         <h1 className="text-3xl font-bold text-primary flex items-center">
           <ListChecks className="mr-3 h-8 w-8" /> Saved Notes
@@ -354,7 +396,7 @@ export default function SavedNotesViewer() {
                     </div>
                   </div>
                   <CardDescription className="text-xs text-muted-foreground pt-1">
-                    Saved on: {new Date(note.savedAt).toLocaleDateString()} {new Date(note.savedAt).toLocaleTimeString()}
+                    Saved on: {formatFirebaseTimestamp(note.savedAt)}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-6 space-y-4">
@@ -465,4 +507,3 @@ export default function SavedNotesViewer() {
     </div>
   );
 }
-
