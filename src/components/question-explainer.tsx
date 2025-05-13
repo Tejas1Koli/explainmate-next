@@ -22,11 +22,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save, LogIn } from 'lucide-react';
+import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
 import { useAuth } from '@/contexts/auth-context';
+import { addFeedback } from '@/lib/feedback-storage';
 
 const formSchema = z.object({
   question: z.string()
@@ -34,12 +35,23 @@ const formSchema = z.object({
     .max(2000, "Question must be at most 2000 characters."),
 });
 
+const feedbackFormSchema = z.object({
+  feedbackText: z.string().min(10, "Feedback must be at least 10 characters.").max(1000, "Feedback must be at most 1000 characters."),
+});
+
 export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [userNotes, setUserNotes] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
+  const [showFeedbackInput, setShowFeedbackInput] = useState<boolean>(false);
+  const [feedbackText, setFeedbackText] = useState<string>('');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
+
   const { toast } = useToast();
   const { currentUser, loading: authLoading } = useAuth();
 
@@ -50,11 +62,23 @@ export default function QuestionExplainer() {
     },
   });
 
+  const feedbackForm = useForm<z.infer<typeof feedbackFormSchema>>({
+    resolver: zodResolver(feedbackFormSchema),
+    defaultValues: {
+      feedbackText: "",
+    },
+  });
+
   async function onSubmitExplanation(values: z.infer<typeof formSchema>) {
     setIsLoadingExplanation(true);
     setExplanation(null);
+    setCurrentQuestion(values.question);
     setUserNotes(''); 
     setError(null);
+    setFeedbackSubmitted(false);
+    setShowFeedbackInput(false);
+    setFeedbackText('');
+
     try {
       const input: ExplainUPSCQuestionInput = { question: values.question };
       const result: ExplainUPSCQuestionOutput = await explainUPSCQuestion(input);
@@ -103,6 +127,44 @@ export default function QuestionExplainer() {
       });
     }
   }
+
+  const handleHelpfulClick = async () => {
+    if (!currentQuestion || !explanation) return;
+    setIsSubmittingFeedback(true);
+    await addFeedback({
+      userId: currentUser?.uid,
+      question: currentQuestion,
+      explanation: explanation,
+      isHelpful: true,
+    });
+    setFeedbackSubmitted(true);
+    setShowFeedbackInput(false);
+    setIsSubmittingFeedback(false);
+    toast({ title: "Feedback Received", description: "Thank you for your feedback!" });
+  };
+
+  const handleNotHelpfulClick = () => {
+    setShowFeedbackInput(true);
+    setFeedbackSubmitted(false); // Allow submitting new feedback if they first said helpful
+  };
+  
+  async function onFeedbackSubmit(values: z.infer<typeof feedbackFormSchema>) {
+    if (!currentQuestion || !explanation) return;
+    setIsSubmittingFeedback(true);
+    await addFeedback({
+      userId: currentUser?.uid,
+      question: currentQuestion,
+      explanation: explanation,
+      isHelpful: false,
+      feedbackText: values.feedbackText,
+    });
+    setFeedbackSubmitted(true);
+    setShowFeedbackInput(false);
+    setIsSubmittingFeedback(false);
+    feedbackForm.reset();
+    toast({ title: "Feedback Received", description: "Thank you for your feedback! We'll use it to improve." });
+  }
+
 
   return (
     <div className="w-full max-w-2xl mx-auto p-2 md:p-0 space-y-6">
@@ -184,6 +246,59 @@ export default function QuestionExplainer() {
               </ReactMarkdown>
             </article>
             
+            <Separator />
+
+            {!feedbackSubmitted && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">Was this explanation helpful?</p>
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={handleHelpfulClick} disabled={isSubmittingFeedback || showFeedbackInput}>
+                    <ThumbsUp className="mr-2 h-4 w-4" /> Helpful
+                  </Button>
+                  <Button variant="outline" onClick={handleNotHelpfulClick} disabled={isSubmittingFeedback}>
+                    <ThumbsDown className="mr-2 h-4 w-4" /> Not Helpful
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {showFeedbackInput && !feedbackSubmitted && (
+              <Form {...feedbackForm}>
+                <form onSubmit={feedbackForm.handleSubmit(onFeedbackSubmit)} className="space-y-4 pt-3">
+                   <FormField
+                    control={feedbackForm.control}
+                    name="feedbackText"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-base font-semibold text-foreground">Your Feedback:</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Please tell us how we can improve this explanation..."
+                            className="min-h-[100px] text-base resize-y focus:ring-primary focus:border-primary rounded-md shadow-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-2">
+                     <Button type="button" variant="ghost" onClick={() => {setShowFeedbackInput(false); feedbackForm.reset();}} disabled={isSubmittingFeedback}>
+                        Cancel
+                     </Button>
+                    <Button type="submit" disabled={isSubmittingFeedback}>
+                      {isSubmittingFeedback ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                      Submit Feedback
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            )}
+
+            {feedbackSubmitted && (
+               <p className="text-sm text-green-600 dark:text-green-400 font-medium">Thank you for your feedback!</p>
+            )}
+
             <Separator />
 
             <div>
