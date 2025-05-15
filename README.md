@@ -1,3 +1,4 @@
+
 # UPSC Explain
 
 This is a NextJS application built with Firebase Studio that provides AI-powered explanations for UPSC (Union Public Service Commission) exam-related questions.
@@ -10,6 +11,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 - **Additional Notes**: Users can add their personal notes to the AI-generated explanation.
 - **Save & View Notes**: Logged-in users can save their questions, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
 - **PDF Export**: Saved notes can be exported as PDF files.
+- **Feedback**: Users can provide feedback (helpful/not helpful with comments) on AI explanations.
 
 ## Getting Started
 
@@ -18,6 +20,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 - Node.js (v18 or later recommended)
 - npm or yarn
 - A Firebase project
+- A Google AI Studio API Key (for Genkit)
 
 ### Setup
 
@@ -37,7 +40,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 3.  **Set up Environment Variables:**
     *   **Create the `.env` file:** In the **root directory** of your project (alongside `package.json`), create a file named `.env`.
     *   **Copy and paste the following content** into your newly created `.env` file.
-    *   **VERY IMPORTANT:** You **MUST REPLACE** the placeholder values like `"YOUR_API_KEY"`, `"YOUR_AUTH_DOMAIN"`, etc., with your **actual Firebase project credentials**.
+    *   **VERY IMPORTANT:** You **MUST REPLACE** the placeholder values like `"YOUR_API_KEY"`, `"YOUR_AUTH_DOMAIN"`, `"YOUR_GOOGLE_AI_STUDIO_API_KEY"`, etc., with your **actual Firebase project credentials and Google AI Studio API key**.
 
     ```env
     # Firebase Configuration
@@ -52,30 +55,40 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_MESSAGING_SENDER_ID"
     NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_APP_ID"
-    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="YOUR_MEASUREMENT_ID"
+    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="YOUR_MEASUREMENT_ID" # Optional but recommended
 
-    # Genkit/Google AI Configuration (if using Google AI provider for Genkit)
-    # If you use Genkit with Google AI, uncomment and set this:
-    # GENKIT_GOOGLEAI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY"
+    # Genkit/Google AI Configuration
+    # Get this from Google AI Studio (https://makersuite.google.com/)
+    GENKIT_GOOGLEAI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY"
     ```
     **How to get Firebase credentials:**
     *   Go to the [Firebase Console](https://console.firebase.google.com/).
     *   Select your project (or create a new one).
     *   Go to **Project settings** (click the gear icon next to "Project Overview").
     *   Under the **General** tab, scroll down to the "Your apps" section.
-    *   If you haven't registered a web app, click the web icon (`</>`) to add one.
-    *   Once your web app is registered, you'll find the `firebaseConfig` object. Copy the values from this object into your `.env` file.
+    *   If you haven't registered a web app, click the web icon (`</>`) to add one. Follow the instructions.
+    *   Once your web app is registered, you'll find the `firebaseConfig` object. Copy the values from this object into your `.env` file for the corresponding `NEXT_PUBLIC_FIREBASE_...` variables.
     *   **Important for Firestore:** Ensure you have enabled Firestore in your Firebase project and set up appropriate security rules. For development, you can start with rules that allow reads/writes if authenticated:
         ```json
         rules_version = '2';
         service cloud.firestore {
           match /databases/{database}/documents {
-            match /users/{userId}/{document=**} {
+            // Allow users to read and write their own notes
+            match /users/{userId}/notes/{noteId} {
               allow read, write: if request.auth != null && request.auth.uid == userId;
+            }
+            // Allow anyone to write feedback (consider restricting in production)
+            match /explanationsFeedback/{feedbackId} {
+              allow read, write; // Or more restrictive: allow create: if request.auth != null;
             }
           }
         }
         ```
+
+    **How to get Google AI Studio API Key:**
+    *   Go to [Google AI Studio](https://makersuite.google.com/).
+    *   Sign in or create an account.
+    *   Create a new API key or use an existing one. Copy this key for `GENKIT_GOOGLEAI_API_KEY`.
 
 4.  **Enable Firebase Authentication Methods:**
     *   In the Firebase Console, go to **Authentication**.
@@ -115,36 +128,55 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 -   **`src/lib/`**: Utility functions and Firebase integration.
     -   `src/lib/firebase.ts`: Firebase initialization.
     -   `src/lib/notes-storage.ts`: Functions for interacting with Firestore to manage saved notes.
+    -   `src/lib/feedback-storage.ts`: Functions for interacting with Firestore to manage feedback.
 -   **`src/contexts/`**: React Context providers.
     -   `src/contexts/auth-context.tsx`: Manages user authentication state.
 -   **`src/hooks/`**: Custom React hooks.
     -   `src/hooks/use-toast.ts`: Hook for displaying toast notifications.
 
-## Troubleshooting Firebase API Key Error
+## Troubleshooting Firebase Errors
 
-If you encounter an error like `Firebase: Error (auth/api-key-not-valid.-please-pass-a-valid-api-key.)`:
+### Critical: `Firebase: Error (auth/configuration-not-found)` or `Firebase: Error (auth/api-key-not-valid...)`
 
-This error means the API key Firebase is trying to use is incorrect or missing. Here's how to fix it:
+This is the most common setup error. It means Firebase isn't loading its configuration correctly, usually due to issues with your `.env` file.
 
-1.  **Ensure `.env` File Exists and is in the Root Directory:**
-    *   The `.env` file **must** be in the root of your project (the same folder as `package.json` and `next.config.ts`), NOT in `src/` or any other subfolder.
-    *   If it doesn't exist, create it.
+**Follow these steps METICULOUSLY:**
 
-2.  **Correct Variable Names and Values:**
+1.  **`.env` File Location (CRITICAL):**
+    *   The `.env` file **MUST** be in the **ROOT DIRECTORY** of your project. This is the same folder that contains `package.json` and `next.config.ts`.
+    *   It should **NOT** be in `src/` or any other subfolder.
+
+2.  **Correct Variable Names in `.env` (CRITICAL):**
     *   Open your `.env` file.
-    *   Verify that the environment variable names start with `NEXT_PUBLIC_` (e.g., `NEXT_PUBLIC_FIREBASE_API_KEY`). This prefix is required by Next.js to expose variables to the browser.
-    *   **Crucially, ensure you have replaced the placeholder values (e.g., `"YOUR_API_KEY"`) with your *actual* credentials from your Firebase project.** Even a small typo can cause this error.
+    *   All Firebase variables **MUST** start with `NEXT_PUBLIC_`. For example:
+        *   `NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_ACTUAL_API_KEY"`
+        *   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_ACTUAL_AUTH_DOMAIN"`
+        *   ...and so on for all `NEXT_PUBLIC_FIREBASE_...` variables.
+    *   The Genkit key is `GENKIT_GOOGLEAI_API_KEY` (no `NEXT_PUBLIC_` prefix as it's used server-side by Genkit).
 
-3.  **Restart Development Server:**
-    *   **This is a very common step to miss.** After creating or making any changes to the `.env` file, you **MUST** stop your Next.js development server (usually `Ctrl+C` in the terminal) and then restart it (e.g., `npm run dev` or `yarn dev`). Next.js only loads environment variables when the server starts.
+3.  **Correct Values in `.env` (CRITICAL):**
+    *   Ensure you have replaced **ALL placeholder values** (like `"YOUR_API_KEY"`, `"YOUR_GOOGLE_AI_STUDIO_API_KEY"`) with your *actual* credentials from your Firebase project and Google AI Studio.
+    *   **No typos!** Even one wrong character will cause this error.
+    *   Double-check that you've copied *all* the necessary Firebase config values from your Firebase project settings (Project settings > General > Your apps > Web app > SDK setup and configuration > Config).
 
-4.  **Verify Firebase Project Setup:**
+4.  **Restart Development Server (CRITICAL):**
+    *   **This is the step most often missed.** After creating or making *any* changes to the `.env` file, you **MUST** stop your Next.js development server (usually `Ctrl+C` in the terminal) and then **restart it** (e.g., `npm run dev` or `yarn dev`).
+    *   Next.js only loads environment variables when the server starts.
+
+5.  **Verify Firebase Project Setup:**
     *   Go to your [Firebase Console](https://console.firebase.google.com/).
     *   Select your project.
     *   Go to **Project settings** (gear icon) > **General** tab.
     *   Scroll to "Your apps" and select your web app.
     *   In the "SDK setup and configuration" section, choose "Config".
     *   Carefully compare these values with what you have in your `.env` file. Ensure they match exactly.
-    *   Confirm that the necessary services (Authentication, Firestore) are enabled in your Firebase project.
+    *   Confirm that the necessary services (**Authentication** with Email/Password provider enabled, and **Firestore** in Native Mode) are enabled in your Firebase project.
 
-If you are using the Google AI provider for Genkit, ensure `GENKIT_GOOGLEAI_API_KEY` is also correctly set in your `.env` file if your Genkit setup relies on it.
+**Check Browser Console for Diagnostic Logs:**
+*   After trying the steps above, open your application's login page.
+*   Open your browser's developer console (usually by pressing F12).
+*   You should see lines starting with `DIAGNOSTIC: NEXT_PUBLIC_FIREBASE_API_KEY: ...`
+*   If `process.env.NEXT_PUBLIC_FIREBASE_API_KEY` shows as `undefined` or the placeholder value, it confirms your `.env` file or server restart is the issue.
+
+If you are using the Google AI provider for Genkit, ensure `GENKIT_GOOGLEAI_API_KEY` is also correctly set in your `.env` file.
+```

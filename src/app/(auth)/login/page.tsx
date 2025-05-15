@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -28,6 +27,17 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Diagnostic logs - check your browser's developer console
+    console.log("DIAGNOSTIC: NEXT_PUBLIC_FIREBASE_API_KEY:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
+    console.log("DIAGNOSTIC: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:", process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN);
+    console.log("DIAGNOSTIC: NEXT_PUBLIC_FIREBASE_PROJECT_ID:", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+    // You can add more logs here for other NEXT_PUBLIC_ variables if needed
+    if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+      console.error("ERROR: NEXT_PUBLIC_FIREBASE_API_KEY is not defined. Please check your .env file and ensure you've restarted the dev server.");
+    }
+  }, []);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
