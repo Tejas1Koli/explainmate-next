@@ -26,6 +26,7 @@ if (!firebaseConfig.apiKey) {
   );
 } else {
   if (!getApps().length) {
+    console.log("Firebase API Key:", firebaseConfig.apiKey);
     app = initializeApp(firebaseConfig);
   } else {
     app = getApp();

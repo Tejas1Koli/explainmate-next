@@ -68,22 +68,6 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     *   Under the **General** tab, scroll down to the "Your apps" section.
     *   If you haven't registered a web app, click the web icon (`</>`) to add one. Follow the instructions.
     *   Once your web app is registered, you'll find the `firebaseConfig` object. Copy the values from this object into your `.env` file for the corresponding `NEXT_PUBLIC_FIREBASE_...` variables.
-    *   **Important for Firestore:** Ensure you have enabled Firestore in your Firebase project and set up appropriate security rules. For development, you can start with rules that allow reads/writes if authenticated:
-        ```json
-        rules_version = '2';
-        service cloud.firestore {
-          match /databases/{database}/documents {
-            // Allow users to read and write their own notes
-            match /users/{userId}/notes/{noteId} {
-              allow read, write: if request.auth != null && request.auth.uid == userId;
-            }
-            // Allow anyone to write feedback (consider restricting in production)
-            match /explanationsFeedback/{feedbackId} {
-              allow read, write; // Or more restrictive: allow create: if request.auth != null;
-            }
-          }
-        }
-        ```
 
     **How to get Google AI Studio API Key:**
     *   Go to [Google AI Studio](https://makersuite.google.com/).
@@ -94,14 +78,40 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     *   In the Firebase Console, go to **Authentication**.
     *   Under the **Sign-in method** tab, enable the "Email/Password" provider.
 
-5.  **Run the development server:**
+5.  **Set up Firestore Database and Security Rules (CRITICAL for "Missing or insufficient permissions" error):**
+    *   In the Firebase Console, go to **Firestore Database** (under Build).
+    *   Click **Create database**.
+    *   Choose to start in **Production mode** (recommended) or Test mode. *If you choose Test mode, remember its rules expire after 30 days.*
+    *   Select a Cloud Firestore location.
+    *   After the database is created, go to the **Rules** tab within Firestore Database.
+    *   **Replace the default rules** with the following rules. These rules are essential for the app to function correctly:
+        ```json
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            // Allow authenticated users to read and write their own notes
+            match /users/{userId}/notes/{noteId} {
+              allow read, write: if request.auth != null && request.auth.uid == userId;
+            }
+            // Allow authenticated users to submit feedback.
+            // For production, you might want to restrict read access if feedback isn't displayed.
+            match /explanationsFeedback/{feedbackId} {
+              allow create: if request.auth != null;
+              allow read: if request.auth != null; // Or adjust as needed
+            }
+          }
+        }
+        ```
+    *   Click **Publish**. If you don't publish the rules, your app won't have the necessary permissions.
+
+6.  **Run the development server:**
     ```bash
     npm run dev
     # or
     yarn dev
     ```
     The application will be available at `http://localhost:9002` (or another port if 9002 is occupied).
-    **Important:** If you just created or modified the `.env` file, you **MUST restart your development server** for the changes to take effect.
+    **Important:** If you just created or modified the `.env` file, or changed Firebase settings, you **MUST restart your development server** for the changes to take effect.
 
     If you are using Genkit with a local development server (e.g., for testing flows):
     ```bash
@@ -127,8 +137,8 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/ai/genkit.ts`: Genkit initialization and configuration.
 -   **`src/lib/`**: Utility functions and Firebase integration.
     -   `src/lib/firebase.ts`: Firebase initialization.
-    -   `src/lib/notes-storage.ts`: Functions for interacting with Firestore to manage saved notes.
-    -   `src/lib/feedback-storage.ts`: Functions for interacting with Firestore to manage feedback.
+    *   `src/lib/notes-storage.ts`: Functions for interacting with Firestore to manage saved notes (path: `users/{userId}/notes`).
+    *   `src/lib/feedback-storage.ts`: Functions for interacting with Firestore to manage feedback (path: `explanationsFeedback`).
 -   **`src/contexts/`**: React Context providers.
     -   `src/contexts/auth-context.tsx`: Manages user authentication state.
 -   **`src/hooks/`**: Custom React hooks.
@@ -170,7 +180,7 @@ This is the most common setup error. It means Firebase isn't loading its configu
     *   Scroll to "Your apps" and select your web app.
     *   In the "SDK setup and configuration" section, choose "Config".
     *   Carefully compare these values with what you have in your `.env` file. Ensure they match exactly.
-    *   Confirm that the necessary services (**Authentication** with Email/Password provider enabled, and **Firestore** in Native Mode) are enabled in your Firebase project.
+    *   Confirm that the necessary services (**Authentication** with Email/Password provider enabled, and **Firestore** in Native Mode with the correct **Rules** published) are enabled in your Firebase project.
 
 **Check Browser Console for Diagnostic Logs:**
 *   After trying the steps above, open your application's login page.
@@ -179,4 +189,25 @@ This is the most common setup error. It means Firebase isn't loading its configu
 *   If `process.env.NEXT_PUBLIC_FIREBASE_API_KEY` shows as `undefined` or the placeholder value, it confirms your `.env` file or server restart is the issue.
 
 If you are using the Google AI provider for Genkit, ensure `GENKIT_GOOGLEAI_API_KEY` is also correctly set in your `.env` file.
-```
+
+### Critical: `FirebaseError: Missing or insufficient permissions.`
+
+This error means your Firestore Security Rules are blocking the app from reading or writing data.
+
+1.  **Ensure Firestore is Set Up:** Follow step 5 in the "Setup" section above to create your Firestore database.
+2.  **Deploy Security Rules (VERY IMPORTANT):**
+    *   Go to your [Firebase Console](https://console.firebase.google.com/).
+    *   Select your project.
+    *   Navigate to **Firestore Database** (under "Build").
+    *   Click on the **Rules** tab.
+    *   **Replace the entire content** of the rules editor with the rules provided in **Step 5 of the Setup section** above.
+    *   Click **Publish**.
+3.  **Verify User Authentication:** Ensure the user is logged in when trying to perform actions that require authentication (like saving or viewing notes). If `currentUser` is null in `useAuth()`, Firestore operations for authenticated users will fail.
+4.  **Check Firestore Paths:** Ensure the paths used in `src/lib/notes-storage.ts` and `src/lib/feedback-storage.ts` correctly match the paths defined in your security rules. The current paths are:
+    *   Notes: `users/{userId}/notes/{noteId}`
+    *   Feedback: `explanationsFeedback/{feedbackId}`
+    These paths align with the provided rules.
+
+If you've deployed the correct rules and are still getting permission errors, check your browser console for any other Firebase errors and ensure your application logic correctly handles user authentication state before attempting Firestore operations.
+
+    
