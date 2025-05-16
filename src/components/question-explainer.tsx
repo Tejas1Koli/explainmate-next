@@ -178,7 +178,7 @@ export default function QuestionExplainer() {
             ExplainMate AI
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground text-md pt-1">
-            Enter your question and get a clear, concise explanation with rich formatting from ExplainMate AI.
+            Enter your question and get a clear, concise explanation with rich formatting from ExplainMate AI. Perfect for quick revisions and deepening your understanding!
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
