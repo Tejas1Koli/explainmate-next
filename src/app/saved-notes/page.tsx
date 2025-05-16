@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import SavedNotesViewer from '@/components/saved-notes-viewer';
 
 export const metadata: Metadata = {
-  title: 'Saved Notes - UPSC Explain',
-  description: 'View your saved UPSC question explanations.',
+  title: 'Saved Notes - ExplainMate AI',
+  description: 'View your saved explanations on ExplainMate AI.',
 };
 
 export default function SavedNotesPage() {

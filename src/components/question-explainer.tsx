@@ -80,6 +80,8 @@ export default function QuestionExplainer() {
     setFeedbackText('');
 
     try {
+      // Note: The flow is named explainUPSCQuestion, but the app is now ExplainMate AI.
+      // This flow might need to be generalized if the app's scope is broader than UPSC.
       const input: ExplainUPSCQuestionInput = { question: values.question };
       const result: ExplainUPSCQuestionOutput = await explainUPSCQuestion(input);
       setExplanation(result.explanation);
@@ -110,8 +112,8 @@ export default function QuestionExplainer() {
       return;
     }
     setIsSavingNote(true);
-    const questionText = form.getValues("question");
-    const savedNote = await addSavedNote(currentUser.uid, questionText, userNotes);
+    // const questionText = form.getValues("question"); // This is currentQuestion
+    const savedNote = await addSavedNote(currentUser.uid, currentQuestion, userNotes);
     setIsSavingNote(false);
 
     if (savedNote) {
@@ -171,10 +173,10 @@ export default function QuestionExplainer() {
       <Card className="shadow-xl rounded-xl overflow-hidden border-border/80">
         <CardHeader className="bg-card p-6">
           <CardTitle className="text-3xl font-bold text-center text-primary tracking-tight">
-            UPSC Insight
+            ExplainMate AI
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground text-md pt-1">
-            Enter your UPSC-related question and get a clear, concise explanation with rich formatting.
+            Enter your question and get a clear, concise explanation with rich formatting from ExplainMate AI.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
@@ -323,7 +325,7 @@ export default function QuestionExplainer() {
                 onClick={handleSaveNote} 
                 variant="default" 
                 className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200"
-                disabled={isSavingNote}
+                disabled={isSavingNote || !currentQuestion} // Also disable if no question was processed
               >
                 {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Question &amp; Your Notes
@@ -335,7 +337,7 @@ export default function QuestionExplainer() {
                 </Button>
             ): (
               <Link href="/login" passHref className="w-full sm:w-auto ml-auto">
-                <Button variant="outline" className="w-full shadow-md hover:shadow-lg transition-shadow duration-200">
+                <Button variant="outline" className="w-full shadow-md hover:shadow-lg transition-shadow duration-200" disabled={!currentQuestion}>
                   <LogIn className="mr-2 h-4 w-4" /> Login to Save Notes
                 </Button>
               </Link>

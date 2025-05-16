@@ -32,7 +32,7 @@ export default function Header() {
       <div className="container mx-auto flex justify-between items-center">
         <Link href="/" passHref>
           <div className="text-2xl font-bold text-primary cursor-pointer">
-            UPSC Insight
+            ExplainMate AI
           </div>
         </Link>
         <nav className="flex items-center gap-3">

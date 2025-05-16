@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -63,7 +64,7 @@ export default function LoginPage() {
     <main className="flex min-h-[calc(100vh-var(--header-height,64px))] flex-col items-center justify-center p-4 bg-background">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center text-primary">Login to UPSC Insight</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center text-primary">Login to ExplainMate AI</CardTitle>
           <CardDescription className="text-center text-muted-foreground">
             Access your saved notes and explanations.
           </CardDescription>

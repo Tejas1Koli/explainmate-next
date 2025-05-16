@@ -60,7 +60,7 @@ export default function SignupPage() {
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center text-primary">Create an Account</CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Join UPSC Insight to save your notes and explanations.
+            Join ExplainMate AI to save your notes and explanations.
           </CardDescription>
         </CardHeader>
         <CardContent>

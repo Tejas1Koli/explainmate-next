@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'UPSC Explain',
-  description: 'Get AI-powered explanations for your UPSC questions.',
+  title: 'ExplainMate AI',
+  description: 'Get AI-powered explanations with ExplainMate AI.',
 };
 
 export default function RootLayout({

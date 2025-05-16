@@ -1,12 +1,12 @@
 
-# UPSC Explain
+# ExplainMate AI
 
-This is a NextJS application built with Firebase Studio that provides AI-powered explanations for UPSC (Union Public Service Commission) exam-related questions.
+This is a NextJS application built with Firebase Studio that provides AI-powered explanations for various questions.
 
 ## Core Features
 
 - **User Authentication**: Secure signup and login for personalized experiences.
-- **Question Input**: Users can input their UPSC-related questions into a text area.
+- **Question Input**: Users can input their questions into a text area.
 - **AI Explanation**: The application utilizes a GenAI flow to generate clear and student-friendly explanations for the submitted questions, including Markdown and LaTeX formatting.
 - **Additional Notes**: Users can add their personal notes to the AI-generated explanation.
 - **Save & View Notes**: Logged-in users can save their questions, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
@@ -27,7 +27,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 1.  **Clone the repository:**
     ```bash
     git clone <repository_url>
-    cd upsc-explain
+    cd explainmate-ai 
     ```
 
 2.  **Install dependencies:**
@@ -59,6 +59,8 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 
     # Genkit/Google AI Configuration
     # Get this from Google AI Studio (https://makersuite.google.com/)
+    # This key was previously named GEMINI_API_KEY, it has been renamed to GENKIT_GOOGLEAI_API_KEY
+    # for consistency with Genkit's Google AI plugin.
     GENKIT_GOOGLEAI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY"
     ```
     **How to get Firebase credentials:**
@@ -76,7 +78,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 
 4.  **Enable Firebase Authentication Methods:**
     *   In the Firebase Console, go to **Authentication**.
-    *   Under the **Sign-in method** tab, enable the "Email/Password" provider.
+    *   Under the **Sign-in method** tab, enable the "Email/Password" provider. (Google Sign-In can also be added here if desired later).
 
 5.  **Set up Firestore Database and Security Rules (CRITICAL for "Missing or insufficient permissions" error):**
     *   In the Firebase Console, go to **Firestore Database** (under Build).
@@ -133,7 +135,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/components/header.tsx`: Application header with navigation and auth status.
     -   `src/components/ui/`: Shadcn UI components.
 -   **`src/ai/`**: GenAI related code.
-    -   `src/ai/flows/explain-upsc-question.ts`: Genkit flow for generating explanations.
+    -   `src/ai/flows/explain-upsc-question.ts`: Genkit flow for generating explanations. (Note: The flow name implies UPSC, but the app name "ExplainMate AI" suggests broader use. Consider renaming this flow for clarity if the app's scope expands.)
     -   `src/ai/genkit.ts`: Genkit initialization and configuration.
 -   **`src/lib/`**: Utility functions and Firebase integration.
     -   `src/lib/firebase.ts`: Firebase initialization.
@@ -209,5 +211,3 @@ This error means your Firestore Security Rules are blocking the app from reading
     These paths align with the provided rules.
 
 If you've deployed the correct rules and are still getting permission errors, check your browser console for any other Firebase errors and ensure your application logic correctly handles user authentication state before attempting Firestore operations.
-
-    
