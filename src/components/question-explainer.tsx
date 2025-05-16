@@ -22,7 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon } from 'lucide-react';
+import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon, Code } from 'lucide-react';
 import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput } from '@/ai/flows/explain-stem-concept';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
@@ -51,6 +51,7 @@ export default function QuestionExplainer() {
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
   const [showFeedbackInput, setShowFeedbackInput] = useState<boolean>(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
+  const [showRawMarkdown, setShowRawMarkdown] = useState<boolean>(false);
 
   const { toast } = useToast();
   const { currentUser, loading: authLoading } = useAuth();
@@ -77,6 +78,7 @@ export default function QuestionExplainer() {
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
+    setShowRawMarkdown(false);
     feedbackForm.reset();
 
     try {
@@ -238,17 +240,39 @@ export default function QuestionExplainer() {
       {explanation && !isLoadingExplanation && (
         <Card className="shadow-xl rounded-xl border-border/80">
           <CardHeader className="bg-card p-6">
-            <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
+            <div className="flex justify-between items-center gap-2">
+              <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowRawMarkdown(!showRawMarkdown)}
+                className="whitespace-nowrap"
+              >
+                <Code className="mr-2 h-4 w-4" />
+                {showRawMarkdown ? "View Rendered" : "View Raw"}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-6 space-y-6">
-            <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
-              <ReactMarkdown
-                remarkPlugins={[remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-              >
-                {explanation}
-              </ReactMarkdown>
-            </article>
+            {showRawMarkdown ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Below is the raw Markdown source, including LaTeX for math formulas. You can copy directly from here.
+                </p>
+                <pre className="p-4 bg-muted/50 dark:bg-muted/20 border border-border rounded-md overflow-x-auto text-sm whitespace-pre-wrap break-all font-mono selection:bg-primary/20">
+                  {explanation}
+                </pre>
+              </>
+            ) : (
+              <article className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl dark:prose-invert max-w-none selection:bg-primary/20">
+                <ReactMarkdown
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {explanation}
+                </ReactMarkdown>
+              </article>
+            )}
             
             <Separator />
 
