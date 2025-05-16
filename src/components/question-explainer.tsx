@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -40,9 +40,21 @@ const feedbackFormSchema = z.object({
   feedbackText: z.string().min(10, "Feedback must be at least 10 characters.").max(1000, "Feedback must be at most 1000 characters."),
 });
 
+const SESSION_STORAGE_KEYS = {
+  QUESTION_INPUT: 'explainerQuestionInput',
+  CURRENT_EXPLAINED_QUESTION: 'explainerCurrentExplainedQuestion',
+  EXPLANATION: 'explainerExplanation',
+  USER_NOTES: 'explainerUserNotes',
+  FEEDBACK_SUBMITTED: 'explainerFeedbackSubmitted',
+  SHOW_FEEDBACK_INPUT: 'explainerShowFeedbackInput',
+  SHOW_RAW_MARKDOWN: 'explainerShowRawMarkdown',
+  ERROR: 'explainerError',
+};
+
+
 export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<string>('');
+  const [currentQuestion, setCurrentQuestion] = useState<string>(''); // Question for which explanation is shown
   const [userNotes, setUserNotes] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -62,24 +74,76 @@ export default function QuestionExplainer() {
       question: "",
     },
   });
+  const questionInputValue = form.watch('question');
 
-  const feedbackForm = useForm<z.infer<typeof feedbackFormSchema>>({
-    resolver: zodResolver(feedbackFormSchema),
-    defaultValues: {
-      feedbackText: "",
-    },
-  });
+  // Load state from sessionStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedQuestionInput = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUESTION_INPUT);
+      if (storedQuestionInput) form.setValue('question', storedQuestionInput);
+
+      const storedCurrentExplainedQuestion = sessionStorage.getItem(SESSION_STORAGE_KEYS.CURRENT_EXPLAINED_QUESTION);
+      if (storedCurrentExplainedQuestion) setCurrentQuestion(storedCurrentExplainedQuestion);
+      
+      const storedExplanation = sessionStorage.getItem(SESSION_STORAGE_KEYS.EXPLANATION);
+      if (storedExplanation) setExplanation(storedExplanation);
+
+      const storedUserNotes = sessionStorage.getItem(SESSION_STORAGE_KEYS.USER_NOTES);
+      if (storedUserNotes) setUserNotes(storedUserNotes);
+
+      const storedFeedbackSubmitted = sessionStorage.getItem(SESSION_STORAGE_KEYS.FEEDBACK_SUBMITTED);
+      if (storedFeedbackSubmitted) setFeedbackSubmitted(JSON.parse(storedFeedbackSubmitted));
+
+      const storedShowFeedbackInput = sessionStorage.getItem(SESSION_STORAGE_KEYS.SHOW_FEEDBACK_INPUT);
+      if (storedShowFeedbackInput) setShowFeedbackInput(JSON.parse(storedShowFeedbackInput));
+      
+      const storedShowRawMarkdown = sessionStorage.getItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN);
+      if (storedShowRawMarkdown) setShowRawMarkdown(JSON.parse(storedShowRawMarkdown));
+
+      const storedError = sessionStorage.getItem(SESSION_STORAGE_KEYS.ERROR);
+      if (storedError) setError(storedError);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only on mount
+
+  // Save state to sessionStorage on change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.QUESTION_INPUT, questionInputValue);
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.CURRENT_EXPLAINED_QUESTION, currentQuestion);
+      if (explanation !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.EXPLANATION, explanation);
+      else sessionStorage.removeItem(SESSION_STORAGE_KEYS.EXPLANATION);
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.USER_NOTES, userNotes);
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.FEEDBACK_SUBMITTED, JSON.stringify(feedbackSubmitted));
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.SHOW_FEEDBACK_INPUT, JSON.stringify(showFeedbackInput));
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN, JSON.stringify(showRawMarkdown));
+      if (error !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.ERROR, error);
+      else sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
+    }
+  }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error]);
+
 
   async function onSubmitExplanation(values: z.infer<typeof formSchema>) {
     setIsLoadingExplanation(true);
     setExplanation(null);
-    setCurrentQuestion(values.question);
+    setCurrentQuestion(values.question); // Set current question being processed
     setUserNotes(''); 
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
     setShowRawMarkdown(false);
     feedbackForm.reset();
+
+    // Clear previous explanation-related items from session storage for a fresh start
+    if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.EXPLANATION);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER_NOTES);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.FEEDBACK_SUBMITTED);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.SHOW_FEEDBACK_INPUT);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
+    }
+
 
     try {
       const input: ExplainSTEMConceptInput = { question: values.question };
@@ -111,7 +175,17 @@ export default function QuestionExplainer() {
       });
       return;
     }
+    if (!currentQuestion || !explanation) {
+       toast({
+        title: "Nothing to Save",
+        description: "Please generate an explanation before saving.",
+        variant: "default",
+      });
+      return;
+    }
+
     setIsSavingNote(true);
+    // Pass currentQuestion (the one for which explanation was generated)
     const savedNote = await addSavedNote(currentUser.uid, currentQuestion, userNotes);
     setIsSavingNote(false);
 
@@ -137,7 +211,7 @@ export default function QuestionExplainer() {
       question: currentQuestion,
       explanation: explanation,
       isHelpful: true,
-      feedbackText: '', // No additional text for "helpful"
+      feedbackText: '', 
       feedbackType: 'explanation',
     };
     await addFeedback(feedbackData);
@@ -223,7 +297,7 @@ export default function QuestionExplainer() {
         </CardContent>
       </Card>
 
-      {error && (
+      {error && !isLoadingExplanation && (
         <Card className="shadow-lg rounded-xl border-destructive bg-destructive/5">
           <CardHeader className="p-4">
             <CardTitle className="text-destructive text-lg font-semibold flex items-center">
@@ -351,7 +425,7 @@ export default function QuestionExplainer() {
                 onClick={handleSaveNote} 
                 variant="default" 
                 className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200"
-                disabled={isSavingNote || !currentQuestion} 
+                disabled={isSavingNote || !currentQuestion || !explanation} 
               >
                 {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Question &amp; Your Notes
@@ -363,7 +437,7 @@ export default function QuestionExplainer() {
                 </Button>
             ): (
               <Link href="/login" passHref className="w-full sm:w-auto ml-auto">
-                <Button variant="outline" className="w-full shadow-md hover:shadow-lg transition-shadow duration-200" disabled={!currentQuestion}>
+                <Button variant="outline" className="w-full shadow-md hover:shadow-lg transition-shadow duration-200" disabled={!currentQuestion || !explanation}>
                   <LogIn className="mr-2 h-4 w-4" /> Login to Save Notes
                 </Button>
               </Link>
@@ -374,3 +448,5 @@ export default function QuestionExplainer() {
     </div>
   );
 }
+
+    
