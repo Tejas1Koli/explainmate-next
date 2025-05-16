@@ -12,11 +12,20 @@ import Link from 'next/link';
 
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
   Form,
   FormControl,
   FormField,
   FormItem,
-  FormLabel, // Keep this if used elsewhere, or ensure it's used for the form itself
+  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
@@ -81,6 +90,7 @@ export default function QuestionExplainer() {
   const [userAnswers, setUserAnswers] = useState<{ [questionId: string]: number }>({});
   const [quizSubmitted, setQuizSubmitted] = useState<boolean>(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
+  const [isQuizDialogOpen, setIsQuizDialogOpen] = useState<boolean>(false);
 
 
   const { toast } = useToast();
@@ -171,13 +181,16 @@ export default function QuestionExplainer() {
   }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error, quizTitle, quizQuestions, userAnswers, quizSubmitted, quizScore]);
 
 
-  const resetQuizState = () => {
+  const resetQuizState = useCallback((closeDialog: boolean = true) => {
     setQuizTitle(null);
     setQuizQuestions(null);
     setUserAnswers({});
     setQuizSubmitted(false);
     setQuizScore(null);
     setQuizError(null);
+    if (closeDialog) {
+      setIsQuizDialogOpen(false);
+    }
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_TITLE);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_QUESTIONS);
@@ -185,7 +198,7 @@ export default function QuestionExplainer() {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SUBMITTED);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SCORE);
     }
-  };
+  }, []);
 
   async function onSubmitExplanation(values: z.infer<typeof explanationFormSchema>) {
     setIsLoadingExplanation(true);
@@ -197,7 +210,7 @@ export default function QuestionExplainer() {
     setShowFeedbackInput(false);
     setShowRawMarkdown(false);
     feedbackForm.reset();
-    resetQuizState(); // Reset quiz state when a new explanation is requested
+    resetQuizState(true); // Reset quiz state and close dialog
 
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.EXPLANATION);
@@ -314,13 +327,14 @@ export default function QuestionExplainer() {
     }
     setIsGeneratingQuiz(true);
     setQuizError(null);
-    resetQuizState(); // Reset previous quiz state before generating new one
+    resetQuizState(false); // Reset previous quiz state but don't close dialog yet
 
     try {
       const input: GenerateQuizInput = { explanation: explanation, numQuestions: 5 };
       const result: GenerateQuizOutput = await generateQuizFromExplanation(input);
       setQuizTitle(result.quizTitle);
       setQuizQuestions(result.questions);
+      setIsQuizDialogOpen(true); // Open the dialog after successfully generating questions
     } catch (err) {
       console.error("Error generating quiz:", err);
       let errorMessage = "Failed to generate quiz. Please try again later.";
@@ -356,6 +370,10 @@ export default function QuestionExplainer() {
       title: "Quiz Submitted!",
       description: `You scored ${score} out of ${quizQuestions.length}.`,
     });
+  };
+
+  const handleCloseQuizDialog = () => {
+    resetQuizState(true);
   };
 
   return (
@@ -442,7 +460,7 @@ export default function QuestionExplainer() {
                   variant="outline" 
                   size="sm" 
                   onClick={handleQuizify}
-                  disabled={isGeneratingQuiz}
+                  disabled={isGeneratingQuiz || !explanation}
                   className="whitespace-nowrap"
                 >
                   {isGeneratingQuiz ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
@@ -570,7 +588,16 @@ export default function QuestionExplainer() {
         </Card>
       )}
 
-      {quizError && !isGeneratingQuiz && (
+      {isGeneratingQuiz && !isQuizDialogOpen && (
+        <Card className="shadow-xl rounded-xl border-border/80 mt-6">
+          <CardContent className="p-6 flex flex-col items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+            <p className="text-muted-foreground">Generating your quiz...</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {quizError && !isGeneratingQuiz && !isQuizDialogOpen && (
         <Card className="shadow-lg rounded-xl border-destructive bg-destructive/5 mt-6">
           <CardHeader className="p-4">
             <CardTitle className="text-destructive text-lg font-semibold flex items-center">
@@ -584,95 +611,111 @@ export default function QuestionExplainer() {
         </Card>
       )}
 
-      {isGeneratingQuiz && (
-        <Card className="shadow-xl rounded-xl border-border/80 mt-6">
-          <CardContent className="p-6 flex flex-col items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
-            <p className="text-muted-foreground">Generating your quiz...</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {quizQuestions && quizQuestions.length > 0 && !isGeneratingQuiz && (
-        <Card className="shadow-xl rounded-xl border-border/80 mt-6">
-          <CardHeader className="bg-card p-6">
-            <CardTitle className="text-2xl font-semibold text-primary">{quizTitle || "Test Your Knowledge"}</CardTitle>
-            {quizSubmitted && quizScore !== null && (
-                 <CardDescription className="text-lg">
+      <Dialog open={isQuizDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            handleCloseQuizDialog();
+          }
+          setIsQuizDialogOpen(open);
+        }}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-primary">
+              {quizTitle || "Test Your Knowledge"}
+            </DialogTitle>
+            {quizSubmitted && quizScore !== null && quizQuestions && (
+                 <DialogDescription className="text-lg">
                     Your Score: <span className="font-bold text-primary">{quizScore}</span> / {quizQuestions.length}
-                 </CardDescription>
+                 </DialogDescription>
             )}
-          </CardHeader>
-          <CardContent className="p-6 space-y-6">
-            {quizQuestions.map((q, index) => (
-              <Card key={q.id} className="pt-4 border shadow-md rounded-lg">
-                <CardContent>
-                  <p className="font-semibold mb-3 text-foreground">{index + 1}. {q.questionText}</p>
-                  <RadioGroup
-                    onValueChange={(value) => handleAnswerSelect(q.id, parseInt(value))}
-                    value={userAnswers[q.id]?.toString()}
-                    disabled={quizSubmitted}
-                  >
-                    {q.options.map((option, optIndex) => {
-                      const isCorrect = optIndex === q.correctAnswerIndex;
-                      const isSelected = userAnswers[q.id] === optIndex;
-                      let optionStyle = "text-foreground";
-                      let indicatorIcon = null;
+            {isGeneratingQuiz && (
+                 <DialogDescription className="text-lg flex items-center justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                    Generating quiz...
+                 </DialogDescription>
+            )}
+            {quizError && (
+                <DialogDescription className="text-destructive text-sm pt-2">
+                    <AlertCircle className="inline-block mr-1 h-4 w-4" />
+                    {quizError}
+                </DialogDescription>
+            )}
+          </DialogHeader>
 
-                      if (quizSubmitted) {
-                        if (isCorrect) {
-                          optionStyle = "text-green-600 dark:text-green-500 font-medium";
-                          indicatorIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
-                        } else if (isSelected && !isCorrect) {
-                          optionStyle = "text-red-600 dark:text-red-500 font-medium";
-                          indicatorIcon = <XCircle className="h-5 w-5 text-red-500" />;
+          {quizQuestions && quizQuestions.length > 0 && !isGeneratingQuiz && (
+            <div className="space-y-4 overflow-y-auto py-2 pr-2 flex-grow">
+              {quizQuestions.map((q, index) => (
+                <Card key={q.id} className="pt-4 border shadow-md rounded-lg">
+                  <CardContent>
+                    <p className="font-semibold mb-3 text-foreground">{index + 1}. {q.questionText}</p>
+                    <RadioGroup
+                      onValueChange={(value) => handleAnswerSelect(q.id, parseInt(value))}
+                      value={userAnswers[q.id]?.toString()}
+                      disabled={quizSubmitted}
+                    >
+                      {q.options.map((option, optIndex) => {
+                        const isCorrect = optIndex === q.correctAnswerIndex;
+                        const isSelected = userAnswers[q.id] === optIndex;
+                        let optionStyle = "text-foreground";
+                        let indicatorIcon = null;
+
+                        if (quizSubmitted) {
+                          if (isCorrect) {
+                            optionStyle = "text-green-600 dark:text-green-500 font-medium";
+                            indicatorIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
+                          } else if (isSelected && !isCorrect) {
+                            optionStyle = "text-red-600 dark:text-red-500 font-medium";
+                            indicatorIcon = <XCircle className="h-5 w-5 text-red-500" />;
+                          }
                         }
-                      }
 
-                      return (
-                        <div key={optIndex} className="flex items-center space-x-3 space-y-0 mb-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                          <RadioGroupItem value={optIndex.toString()} id={`${q.id}-opt${optIndex}`} />
-                          <Label htmlFor={`${q.id}-opt${optIndex}`} className={`font-normal flex-1 cursor-pointer ${optionStyle}`}>
-                            {option}
-                          </Label>
-                          {quizSubmitted && indicatorIcon && (
-                            <div className="ml-auto">{indicatorIcon}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </RadioGroup>
-                  {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] !== q.correctAnswerIndex && (
-                     <div className="mt-2 p-2 text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-md">
-                        <p className="font-semibold text-blue-700 dark:text-blue-300">Explanation:</p>
-                        <p className="text-blue-600 dark:text-blue-400">{q.explanationForCorrectAnswer}</p>
-                     </div>
-                  )}
-                   {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] === q.correctAnswerIndex && (
-                     <div className="mt-2 p-2 text-sm bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-md">
-                        <p className="text-green-600 dark:text-green-400">{q.explanationForCorrectAnswer}</p>
-                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </CardContent>
-          {!quizSubmitted && (
-            <CardFooter className="p-6 border-t bg-card">
-              <Button onClick={handleSubmitQuiz} className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg" disabled={Object.keys(userAnswers).length !== quizQuestions.length}>
+                        return (
+                          <div key={optIndex} className="flex items-center space-x-3 space-y-0 mb-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                            <RadioGroupItem value={optIndex.toString()} id={`${q.id}-opt${optIndex}-dialog`} />
+                            <Label htmlFor={`${q.id}-opt${optIndex}-dialog`} className={`font-normal flex-1 cursor-pointer ${optionStyle}`}>
+                              {option}
+                            </Label>
+                            {quizSubmitted && indicatorIcon && (
+                              <div className="ml-auto">{indicatorIcon}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </RadioGroup>
+                    {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] !== q.correctAnswerIndex && (
+                       <div className="mt-2 p-2 text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-md">
+                          <p className="font-semibold text-blue-700 dark:text-blue-300">Explanation:</p>
+                          <p className="text-blue-600 dark:text-blue-400">{q.explanationForCorrectAnswer}</p>
+                       </div>
+                    )}
+                     {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] === q.correctAnswerIndex && (
+                       <div className="mt-2 p-2 text-sm bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-md">
+                          <p className="text-green-600 dark:text-green-400">{q.explanationForCorrectAnswer}</p>
+                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+          <DialogFooter className="pt-4">
+            {quizQuestions && quizQuestions.length > 0 && !isGeneratingQuiz && !quizSubmitted && (
+              <Button onClick={handleSubmitQuiz} className="w-full sm:w-auto" disabled={Object.keys(userAnswers).length !== quizQuestions.length}>
                 Submit Quiz
               </Button>
-            </CardFooter>
-          )}
-           {quizSubmitted && (
-            <CardFooter className="p-6 border-t bg-card flex justify-end">
-              <Button onClick={resetQuizState} variant="outline">
-                Try Another Quiz
+            )}
+            {quizSubmitted && (
+              <Button onClick={handleCloseQuizDialog} variant="outline" className="w-full sm:w-auto">
+                Close & Try Another Quiz
               </Button>
-            </CardFooter>
-          )}
-        </Card>
-      )}
+            )}
+             {!quizQuestions && !isGeneratingQuiz && !quizError && (
+                <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                </DialogClose>
+             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
