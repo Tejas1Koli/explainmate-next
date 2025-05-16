@@ -19,7 +19,7 @@ import {
   FormLabel, // Keep this if used elsewhere, or ensure it's used for the form itself
   FormMessage,
 } from "@/components/ui/form";
-import { Label } from "@/components/ui/label"; // Added missing import
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -630,17 +630,15 @@ export default function QuestionExplainer() {
                       }
 
                       return (
-                        <FormItem key={optIndex} className="flex items-center space-x-3 space-y-0 mb-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                          <FormControl>
-                            <RadioGroupItem value={optIndex.toString()} id={`${q.id}-opt${optIndex}`} />
-                          </FormControl>
-                          <Label htmlFor={`${q.id}-opt${optIndex}`} className={`font-normal flex-1 ${optionStyle}`}>
+                        <div key={optIndex} className="flex items-center space-x-3 space-y-0 mb-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                          <RadioGroupItem value={optIndex.toString()} id={`${q.id}-opt${optIndex}`} />
+                          <Label htmlFor={`${q.id}-opt${optIndex}`} className={`font-normal flex-1 cursor-pointer ${optionStyle}`}>
                             {option}
                           </Label>
                           {quizSubmitted && indicatorIcon && (
                             <div className="ml-auto">{indicatorIcon}</div>
                           )}
-                        </FormItem>
+                        </div>
                       );
                     })}
                   </RadioGroup>
