@@ -201,7 +201,7 @@ export default function SavedNotesViewer() {
   
     const contentToRender = (
       <div className="p-5 bg-white">
-        <h2 className="text-xl font-bold mb-2 text-gray-800">Question:</h2>
+        <h2 className="text-xl font-bold mb-2 text-gray-800">Question/Concept:</h2>
         <p className="text-base text-gray-700 mb-4 whitespace-pre-wrap break-words">{note.question}</p>
         <hr className="my-4 border-gray-300"/>
         <h2 className="text-xl font-bold mb-2 text-gray-800">Your Notes:</h2>
@@ -220,7 +220,7 @@ export default function SavedNotesViewer() {
   
     try {
       const canvas = await html2canvas(tempDiv, {
-        scale: 1, // Reduced scale for potentially faster rendering
+        scale: 1, 
         useCORS: true,
         backgroundColor: '#ffffff', 
         logging: false,
@@ -268,7 +268,7 @@ export default function SavedNotesViewer() {
       const yOffset = margin;
   
       pdf.addImage(imgData, 'PNG', xOffset, yOffset, imgRenderWidth, imgRenderHeight);
-      pdf.save(`upsc_note_${note.id.substring(0,8)}.pdf`);
+      pdf.save(`stem_concept_note_${note.id.substring(0,8)}.pdf`);
   
       toast({
           title: "PDF Exported",
@@ -303,7 +303,6 @@ export default function SavedNotesViewer() {
   }
 
   if (!currentUser && !authLoading) {
-     // This case should ideally be handled by the useEffect redirect, but as a fallback:
     return (
       <div className="flex flex-col justify-center items-center min-h-[calc(100vh-200px)] w-full max-w-3xl mx-auto p-4 md:p-6 text-center">
         <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -447,7 +446,7 @@ export default function SavedNotesViewer() {
           <DialogHeader>
             <DialogTitle>Edit Note</DialogTitle>
             <EditDialogDescription>
-              Make changes to your saved question and your additional notes. Click save when you&apos;re done.
+              Make changes to your saved question/concept and your additional notes. Click save when you&apos;re done.
             </EditDialogDescription>
           </DialogHeader>
           <Form {...editForm}>
@@ -457,10 +456,10 @@ export default function SavedNotesViewer() {
                 name="question"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Question</FormLabel>
+                    <FormLabel>Question/Concept</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Edit your question"
+                        placeholder="Edit your question or concept"
                         className="min-h-[100px] resize-y"
                         {...field}
                       />

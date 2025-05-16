@@ -1,17 +1,17 @@
 
 # ExplainMate AI
 
-This is a NextJS application built with Firebase Studio that provides AI-powered explanations for various questions.
+This is a NextJS application built with Firebase Studio that provides AI-powered explanations for various questions, with a focus on STEM concepts.
 
 ## Core Features
 
 - **User Authentication**: Secure signup and login for personalized experiences.
-- **Question Input**: Users can input their questions into a text area.
-- **AI Explanation**: The application utilizes a GenAI flow to generate clear and student-friendly explanations for the submitted questions, including Markdown and LaTeX formatting.
+- **Question Input**: Users can input their STEM questions or concepts into a text area.
+- **AI Explanation**: The application utilizes a GenAI flow to generate clear and student-friendly explanations for the submitted questions/concepts, including Markdown and LaTeX formatting.
 - **Additional Notes**: Users can add their personal notes to the AI-generated explanation.
-- **Save & View Notes**: Logged-in users can save their questions, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
+- **Save & View Notes**: Logged-in users can save their questions/concepts, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
 - **PDF Export**: Saved notes can be exported as PDF files.
-- **Feedback**: Users can provide feedback (helpful/not helpful with comments) on AI explanations.
+- **Feedback**: Users can provide feedback (helpful/not helpful with comments) on AI explanations and general app feedback.
 
 ## Getting Started
 
@@ -125,7 +125,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 ## Application Structure
 
 -   **`src/app/`**: Main application pages (App Router).
-    -   `src/app/page.tsx`: Homepage with the question explainer.
+    -   `src/app/page.tsx`: Homepage with the question/concept explainer.
     -   `src/app/(auth)/login/page.tsx`: Login page.
     -   `src/app/(auth)/signup/page.tsx`: Signup page.
     -   `src/app/saved-notes/page.tsx`: Page to view saved notes.
@@ -133,9 +133,10 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/components/question-explainer.tsx`: Core component for question input and explanation display.
     -   `src/components/saved-notes-viewer.tsx`: Component for displaying and managing saved notes.
     -   `src/components/header.tsx`: Application header with navigation and auth status.
+    -   `src/components/general-feedback-dialog.tsx`: Dialog for submitting general app feedback.
     -   `src/components/ui/`: Shadcn UI components.
 -   **`src/ai/`**: GenAI related code.
-    -   `src/ai/flows/explain-upsc-question.ts`: Genkit flow for generating explanations. (Note: The flow name implies UPSC, but the app name "ExplainMate AI" suggests broader use. Consider renaming this flow for clarity if the app's scope expands.)
+    -   `src/ai/flows/explain-stem-concept.ts`: Genkit flow for generating explanations for STEM concepts.
     -   `src/ai/genkit.ts`: Genkit initialization and configuration.
 -   **`src/lib/`**: Utility functions and Firebase integration.
     -   `src/lib/firebase.ts`: Firebase initialization.
@@ -211,3 +212,9 @@ This error means your Firestore Security Rules are blocking the app from reading
     These paths align with the provided rules.
 
 If you've deployed the correct rules and are still getting permission errors, check your browser console for any other Firebase errors and ensure your application logic correctly handles user authentication state before attempting Firestore operations.
+
+### PDF Export Error (`Could not export the note to PDF`)
+If you encounter issues with PDF export, specifically if KaTeX (math rendering) styles are not applied correctly in the exported PDF:
+* The PDF export function in `src/components/saved-notes-viewer.tsx` attempts to dynamically add the KaTeX stylesheet.
+* Ensure you are connected to the internet when exporting, as it tries to load `https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css`.
+* If issues persist, check the browser console for errors during the `html2canvas` process. The filename for exported PDFs is `stem_concept_note_<note_id_prefix>.pdf`.

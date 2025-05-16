@@ -22,8 +22,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon } from 'lucide-react'; // Renamed MessageSquare to avoid conflict
-import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
+import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon } from 'lucide-react';
+import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput } from '@/ai/flows/explain-stem-concept';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
 import { useAuth } from '@/contexts/auth-context';
@@ -80,8 +80,8 @@ export default function QuestionExplainer() {
     feedbackForm.reset();
 
     try {
-      const input: ExplainUPSCQuestionInput = { question: values.question };
-      const result: ExplainUPSCQuestionOutput = await explainUPSCQuestion(input);
+      const input: ExplainSTEMConceptInput = { question: values.question };
+      const result: ExplainSTEMConceptOutput = await explainSTEMConcept(input);
       setExplanation(result.explanation);
     } catch (err) {
       console.error("Error fetching explanation:", err);
@@ -189,10 +189,10 @@ export default function QuestionExplainer() {
                 name="question"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold text-foreground">Your Question:</FormLabel>
+                    <FormLabel className="text-base font-semibold text-foreground">Your Question/Concept:</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="e.g., Discuss the socio-economic impact of Green Revolution in India, including relevant formulas like $y = mx + c$."
+                        placeholder="e.g., Explain the concept of black holes, derive the formula for kinetic energy $KE = \\frac{1}{2}mv^2$, or describe how a lithium-ion battery works."
                         className="min-h-[120px] text-base resize-y focus:ring-primary focus:border-primary rounded-md shadow-sm"
                         {...field}
                       />
@@ -350,4 +350,3 @@ export default function QuestionExplainer() {
     </div>
   );
 }
-
