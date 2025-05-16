@@ -19,18 +19,20 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon, Code } from 'lucide-react';
+import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon, Code, BrainCircuit, CheckCircle, XCircle } from 'lucide-react';
 import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput } from '@/ai/flows/explain-stem-concept';
+import { generateQuizFromExplanation, GenerateQuizInput, GenerateQuizOutput, QuizQuestion } from '@/ai/flows/generate-quiz-flow';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
 import { useAuth } from '@/contexts/auth-context';
 import { addFeedback } from '@/lib/feedback-storage';
 import type { AddFeedbackData } from '@/lib/feedback-storage';
 
-const formSchema = z.object({
+const explanationFormSchema = z.object({
   question: z.string()
     .min(10, "Question must be at least 10 characters.")
     .max(2000, "Question must be at most 2000 characters."),
@@ -49,12 +51,17 @@ const SESSION_STORAGE_KEYS = {
   SHOW_FEEDBACK_INPUT: 'explainerShowFeedbackInput',
   SHOW_RAW_MARKDOWN: 'explainerShowRawMarkdown',
   ERROR: 'explainerError',
+  QUIZ_QUESTIONS: 'explainerQuizQuestions',
+  QUIZ_TITLE: 'explainerQuizTitle',
+  USER_ANSWERS: 'explainerUserAnswers',
+  QUIZ_SUBMITTED: 'explainerQuizSubmitted',
+  QUIZ_SCORE: 'explainerQuizScore',
 };
 
 
 export default function QuestionExplainer() {
   const [explanation, setExplanation] = useState<string | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<string>(''); // Question for which explanation is shown
+  const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [userNotes, setUserNotes] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -65,22 +72,39 @@ export default function QuestionExplainer() {
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
   const [showRawMarkdown, setShowRawMarkdown] = useState<boolean>(false);
 
+  // Quiz state
+  const [quizTitle, setQuizTitle] = useState<string | null>(null);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[] | null>(null);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  const [userAnswers, setUserAnswers] = useState<{ [questionId: string]: number }>({});
+  const [quizSubmitted, setQuizSubmitted] = useState<boolean>(false);
+  const [quizScore, setQuizScore] = useState<number | null>(null);
+
+
   const { toast } = useToast();
   const { currentUser, loading: authLoading } = useAuth();
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const explainerForm = useForm<z.infer<typeof explanationFormSchema>>({
+    resolver: zodResolver(explanationFormSchema),
     defaultValues: {
       question: "",
     },
   });
-  const questionInputValue = form.watch('question');
+  const questionInputValue = explainerForm.watch('question');
+
+  const feedbackForm = useForm<z.infer<typeof feedbackFormSchema>>({
+    resolver: zodResolver(feedbackFormSchema),
+    defaultValues: {
+      feedbackText: "",
+    },
+  });
 
   // Load state from sessionStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const storedQuestionInput = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUESTION_INPUT);
-      if (storedQuestionInput) form.setValue('question', storedQuestionInput);
+      if (storedQuestionInput) explainerForm.setValue('question', storedQuestionInput);
 
       const storedCurrentExplainedQuestion = sessionStorage.getItem(SESSION_STORAGE_KEYS.CURRENT_EXPLAINED_QUESTION);
       if (storedCurrentExplainedQuestion) setCurrentQuestion(storedCurrentExplainedQuestion);
@@ -102,9 +126,21 @@ export default function QuestionExplainer() {
 
       const storedError = sessionStorage.getItem(SESSION_STORAGE_KEYS.ERROR);
       if (storedError) setError(storedError);
+
+      // Quiz state loading
+      const storedQuizTitle = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUIZ_TITLE);
+      if (storedQuizTitle) setQuizTitle(storedQuizTitle);
+      const storedQuizQuestions = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUIZ_QUESTIONS);
+      if (storedQuizQuestions) setQuizQuestions(JSON.parse(storedQuizQuestions));
+      const storedUserAnswers = sessionStorage.getItem(SESSION_STORAGE_KEYS.USER_ANSWERS);
+      if (storedUserAnswers) setUserAnswers(JSON.parse(storedUserAnswers));
+      const storedQuizSubmitted = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUIZ_SUBMITTED);
+      if (storedQuizSubmitted) setQuizSubmitted(JSON.parse(storedQuizSubmitted));
+      const storedQuizScore = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUIZ_SCORE);
+      if (storedQuizScore) setQuizScore(JSON.parse(storedQuizScore));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only on mount
+  }, []); 
 
   // Save state to sessionStorage on change
   useEffect(() => {
@@ -119,22 +155,49 @@ export default function QuestionExplainer() {
       sessionStorage.setItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN, JSON.stringify(showRawMarkdown));
       if (error !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.ERROR, error);
       else sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
+
+      // Quiz state saving
+      if (quizTitle !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.QUIZ_TITLE, quizTitle);
+      else sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_TITLE);
+      if (quizQuestions !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.QUIZ_QUESTIONS, JSON.stringify(quizQuestions));
+      else sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_QUESTIONS);
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.USER_ANSWERS, JSON.stringify(userAnswers));
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.QUIZ_SUBMITTED, JSON.stringify(quizSubmitted));
+      if (quizScore !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.QUIZ_SCORE, JSON.stringify(quizScore));
+      else sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SCORE);
+
     }
-  }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error]);
+  }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error, quizTitle, quizQuestions, userAnswers, quizSubmitted, quizScore]);
 
 
-  async function onSubmitExplanation(values: z.infer<typeof formSchema>) {
+  const resetQuizState = () => {
+    setQuizTitle(null);
+    setQuizQuestions(null);
+    setUserAnswers({});
+    setQuizSubmitted(false);
+    setQuizScore(null);
+    setQuizError(null);
+    if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_TITLE);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_QUESTIONS);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER_ANSWERS);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SUBMITTED);
+        sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SCORE);
+    }
+  };
+
+  async function onSubmitExplanation(values: z.infer<typeof explanationFormSchema>) {
     setIsLoadingExplanation(true);
     setExplanation(null);
-    setCurrentQuestion(values.question); // Set current question being processed
+    setCurrentQuestion(values.question); 
     setUserNotes(''); 
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
     setShowRawMarkdown(false);
     feedbackForm.reset();
+    resetQuizState(); // Reset quiz state when a new explanation is requested
 
-    // Clear previous explanation-related items from session storage for a fresh start
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.EXPLANATION);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER_NOTES);
@@ -143,7 +206,6 @@ export default function QuestionExplainer() {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
     }
-
 
     try {
       const input: ExplainSTEMConceptInput = { question: values.question };
@@ -185,7 +247,6 @@ export default function QuestionExplainer() {
     }
 
     setIsSavingNote(true);
-    // Pass currentQuestion (the one for which explanation was generated)
     const savedNote = await addSavedNote(currentUser.uid, currentQuestion, userNotes);
     setIsSavingNote(false);
 
@@ -245,6 +306,56 @@ export default function QuestionExplainer() {
     toast({ title: "Feedback Received", description: "Thank you for your feedback! We'll use it to improve." });
   }
 
+  const handleQuizify = async () => {
+    if (!explanation) {
+      toast({ title: "No Explanation", description: "Please generate an explanation first.", variant: "default" });
+      return;
+    }
+    setIsGeneratingQuiz(true);
+    setQuizError(null);
+    resetQuizState(); // Reset previous quiz state before generating new one
+
+    try {
+      const input: GenerateQuizInput = { explanation: explanation, numQuestions: 5 };
+      const result: GenerateQuizOutput = await generateQuizFromExplanation(input);
+      setQuizTitle(result.quizTitle);
+      setQuizQuestions(result.questions);
+    } catch (err) {
+      console.error("Error generating quiz:", err);
+      let errorMessage = "Failed to generate quiz. Please try again later.";
+      if (err instanceof Error) {
+        errorMessage = `An error occurred: ${err.message}. Please try again.`;
+      }
+      setQuizError(errorMessage);
+      toast({
+        title: "Quiz Generation Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleAnswerSelect = (questionId: string, answerIndex: number) => {
+    setUserAnswers(prev => ({ ...prev, [questionId]: answerIndex }));
+  };
+
+  const handleSubmitQuiz = () => {
+    if (!quizQuestions) return;
+    let score = 0;
+    quizQuestions.forEach(q => {
+      if (userAnswers[q.id] === q.correctAnswerIndex) {
+        score++;
+      }
+    });
+    setQuizScore(score);
+    setQuizSubmitted(true);
+    toast({
+      title: "Quiz Submitted!",
+      description: `You scored ${score} out of ${quizQuestions.length}.`,
+    });
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto p-2 md:p-0 space-y-6">
@@ -258,10 +369,10 @@ export default function QuestionExplainer() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmitExplanation)} className="space-y-6">
+          <Form {...explainerForm}>
+            <form onSubmit={explainerForm.handleSubmit(onSubmitExplanation)} className="space-y-6">
               <FormField
-                control={form.control}
+                control={explainerForm.control}
                 name="question"
                 render={({ field }) => (
                   <FormItem>
@@ -316,15 +427,27 @@ export default function QuestionExplainer() {
           <CardHeader className="bg-card p-6">
             <div className="flex justify-between items-center gap-2">
               <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowRawMarkdown(!showRawMarkdown)}
-                className="whitespace-nowrap"
-              >
-                <Code className="mr-2 h-4 w-4" />
-                {showRawMarkdown ? "View Rendered" : "View Raw"}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowRawMarkdown(!showRawMarkdown)}
+                  className="whitespace-nowrap"
+                >
+                  <Code className="mr-2 h-4 w-4" />
+                  {showRawMarkdown ? "View Rendered" : "View Raw"}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleQuizify}
+                  disabled={isGeneratingQuiz}
+                  className="whitespace-nowrap"
+                >
+                  {isGeneratingQuiz ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BrainCircuit className="mr-2 h-4 w-4" />}
+                  Quizify
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-6 space-y-6">
@@ -350,7 +473,7 @@ export default function QuestionExplainer() {
             
             <Separator />
 
-            {!feedbackSubmitted && (
+            {!feedbackSubmitted && !showFeedbackInput && (
               <div className="space-y-3">
                 <p className="text-sm font-medium text-foreground">Was this explanation helpful?</p>
                 <div className="flex gap-3">
@@ -445,8 +568,112 @@ export default function QuestionExplainer() {
           </CardFooter>
         </Card>
       )}
+
+      {quizError && !isGeneratingQuiz && (
+        <Card className="shadow-lg rounded-xl border-destructive bg-destructive/5 mt-6">
+          <CardHeader className="p-4">
+            <CardTitle className="text-destructive text-lg font-semibold flex items-center">
+              <AlertCircle className="inline-block mr-2 h-5 w-5" />
+              Quiz Generation Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <p className="text-destructive-foreground opacity-90">{quizError}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isGeneratingQuiz && (
+        <Card className="shadow-xl rounded-xl border-border/80 mt-6">
+          <CardContent className="p-6 flex flex-col items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+            <p className="text-muted-foreground">Generating your quiz...</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {quizQuestions && quizQuestions.length > 0 && !isGeneratingQuiz && (
+        <Card className="shadow-xl rounded-xl border-border/80 mt-6">
+          <CardHeader className="bg-card p-6">
+            <CardTitle className="text-2xl font-semibold text-primary">{quizTitle || "Test Your Knowledge"}</CardTitle>
+            {quizSubmitted && quizScore !== null && (
+                 <CardDescription className="text-lg">
+                    Your Score: <span className="font-bold text-primary">{quizScore}</span> / {quizQuestions.length}
+                 </CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="p-6 space-y-6">
+            {quizQuestions.map((q, index) => (
+              <Card key={q.id} className="pt-4 border shadow-md rounded-lg">
+                <CardContent>
+                  <p className="font-semibold mb-3 text-foreground">{index + 1}. {q.questionText}</p>
+                  <RadioGroup
+                    onValueChange={(value) => handleAnswerSelect(q.id, parseInt(value))}
+                    value={userAnswers[q.id]?.toString()}
+                    disabled={quizSubmitted}
+                  >
+                    {q.options.map((option, optIndex) => {
+                      const isCorrect = optIndex === q.correctAnswerIndex;
+                      const isSelected = userAnswers[q.id] === optIndex;
+                      let optionStyle = "text-foreground";
+                      let indicatorIcon = null;
+
+                      if (quizSubmitted) {
+                        if (isCorrect) {
+                          optionStyle = "text-green-600 dark:text-green-500 font-medium";
+                          indicatorIcon = <CheckCircle className="h-5 w-5 text-green-500" />;
+                        } else if (isSelected && !isCorrect) {
+                          optionStyle = "text-red-600 dark:text-red-500 font-medium";
+                          indicatorIcon = <XCircle className="h-5 w-5 text-red-500" />;
+                        }
+                      }
+
+                      return (
+                        <FormItem key={optIndex} className="flex items-center space-x-3 space-y-0 mb-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                          <FormControl>
+                            <RadioGroupItem value={optIndex.toString()} id={`${q.id}-opt${optIndex}`} />
+                          </FormControl>
+                          <Label htmlFor={`${q.id}-opt${optIndex}`} className={`font-normal flex-1 ${optionStyle}`}>
+                            {option}
+                          </Label>
+                          {quizSubmitted && indicatorIcon && (
+                            <div className="ml-auto">{indicatorIcon}</div>
+                          )}
+                        </FormItem>
+                      );
+                    })}
+                  </RadioGroup>
+                  {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] !== q.correctAnswerIndex && (
+                     <div className="mt-2 p-2 text-sm bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-md">
+                        <p className="font-semibold text-blue-700 dark:text-blue-300">Explanation:</p>
+                        <p className="text-blue-600 dark:text-blue-400">{q.explanationForCorrectAnswer}</p>
+                     </div>
+                  )}
+                   {quizSubmitted && q.explanationForCorrectAnswer && userAnswers[q.id] === q.correctAnswerIndex && (
+                     <div className="mt-2 p-2 text-sm bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-md">
+                        <p className="text-green-600 dark:text-green-400">{q.explanationForCorrectAnswer}</p>
+                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </CardContent>
+          {!quizSubmitted && (
+            <CardFooter className="p-6 border-t bg-card">
+              <Button onClick={handleSubmitQuiz} className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg" disabled={Object.keys(userAnswers).length !== quizQuestions.length}>
+                Submit Quiz
+              </Button>
+            </CardFooter>
+          )}
+           {quizSubmitted && (
+            <CardFooter className="p-6 border-t bg-card flex justify-end">
+              <Button onClick={resetQuizState} variant="outline">
+                Try Another Quiz
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
-
-    
