@@ -10,12 +10,16 @@ import {
 export interface FeedbackEntry {
   id?: string; // Firestore document ID (optional for creation)
   userId?: string; // ID of the user who provided feedback, if logged in
-  question: string; // The question that was asked
-  explanation: string; // The AI-generated explanation
-  isHelpful: boolean; // Was the explanation helpful?
-  feedbackText?: string; // User's textual feedback if not helpful
+  question?: string; // The question that was asked (for explanation feedback)
+  explanation?: string; // The AI-generated explanation (for explanation feedback)
+  isHelpful?: boolean; // Was the explanation helpful? (for explanation feedback)
+  feedbackText: string; // User's textual feedback (required for general, optional for helpful explanation)
+  feedbackType: 'explanation' | 'general'; // To distinguish feedback type
   createdAt: Timestamp; // Firestore Timestamp
 }
+
+// Type for data passed to addFeedback function
+export type AddFeedbackData = Omit<FeedbackEntry, 'id' | 'createdAt'>;
 
 // Firestore collection path for feedback
 const FEEDBACK_COLLECTION = 'explanationsFeedback';
@@ -26,7 +30,7 @@ const FEEDBACK_COLLECTION = 'explanationsFeedback';
  * @returns True if the feedback was saved successfully, false otherwise.
  */
 export async function addFeedback(
-  feedbackData: Omit<FeedbackEntry, 'id' | 'createdAt'>
+  feedbackData: AddFeedbackData
 ): Promise<boolean> {
   try {
     const feedbackCollectionRef = collection(db, FEEDBACK_COLLECTION);
@@ -40,3 +44,4 @@ export async function addFeedback(
     return false;
   }
 }
+

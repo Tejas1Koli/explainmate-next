@@ -22,12 +22,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
-import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react';
+import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon } from 'lucide-react'; // Renamed MessageSquare to avoid conflict
 import { explainUPSCQuestion, ExplainUPSCQuestionInput, ExplainUPSCQuestionOutput } from '@/ai/flows/explain-upsc-question';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
 import { useAuth } from '@/contexts/auth-context';
 import { addFeedback } from '@/lib/feedback-storage';
+import type { AddFeedbackData } from '@/lib/feedback-storage';
 
 const formSchema = z.object({
   question: z.string()
@@ -49,7 +50,6 @@ export default function QuestionExplainer() {
   
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
   const [showFeedbackInput, setShowFeedbackInput] = useState<boolean>(false);
-  const [feedbackText, setFeedbackText] = useState<string>('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
 
   const { toast } = useToast();
@@ -77,11 +77,9 @@ export default function QuestionExplainer() {
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
-    setFeedbackText('');
+    feedbackForm.reset();
 
     try {
-      // Note: The flow is named explainUPSCQuestion, but the app is now ExplainMate AI.
-      // This flow might need to be generalized if the app's scope is broader than UPSC.
       const input: ExplainUPSCQuestionInput = { question: values.question };
       const result: ExplainUPSCQuestionOutput = await explainUPSCQuestion(input);
       setExplanation(result.explanation);
@@ -112,7 +110,6 @@ export default function QuestionExplainer() {
       return;
     }
     setIsSavingNote(true);
-    // const questionText = form.getValues("question"); // This is currentQuestion
     const savedNote = await addSavedNote(currentUser.uid, currentQuestion, userNotes);
     setIsSavingNote(false);
 
@@ -133,12 +130,15 @@ export default function QuestionExplainer() {
   const handleHelpfulClick = async () => {
     if (!currentQuestion || !explanation) return;
     setIsSubmittingFeedback(true);
-    await addFeedback({
+    const feedbackData: AddFeedbackData = {
       userId: currentUser?.uid,
       question: currentQuestion,
       explanation: explanation,
       isHelpful: true,
-    });
+      feedbackText: '', // No additional text for "helpful"
+      feedbackType: 'explanation',
+    };
+    await addFeedback(feedbackData);
     setFeedbackSubmitted(true);
     setShowFeedbackInput(false);
     setIsSubmittingFeedback(false);
@@ -147,19 +147,21 @@ export default function QuestionExplainer() {
 
   const handleNotHelpfulClick = () => {
     setShowFeedbackInput(true);
-    setFeedbackSubmitted(false); // Allow submitting new feedback if they first said helpful
+    setFeedbackSubmitted(false); 
   };
   
   async function onFeedbackSubmit(values: z.infer<typeof feedbackFormSchema>) {
     if (!currentQuestion || !explanation) return;
     setIsSubmittingFeedback(true);
-    await addFeedback({
+    const feedbackData: AddFeedbackData = {
       userId: currentUser?.uid,
       question: currentQuestion,
       explanation: explanation,
       isHelpful: false,
       feedbackText: values.feedbackText,
-    });
+      feedbackType: 'explanation',
+    };
+    await addFeedback(feedbackData);
     setFeedbackSubmitted(true);
     setShowFeedbackInput(false);
     setIsSubmittingFeedback(false);
@@ -289,7 +291,7 @@ export default function QuestionExplainer() {
                         Cancel
                      </Button>
                     <Button type="submit" disabled={isSubmittingFeedback}>
-                      {isSubmittingFeedback ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                      {isSubmittingFeedback ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FeedbackMessageIcon className="mr-2 h-4 w-4" />}
                       Submit Feedback
                     </Button>
                   </div>
@@ -325,7 +327,7 @@ export default function QuestionExplainer() {
                 onClick={handleSaveNote} 
                 variant="default" 
                 className="w-full sm:w-auto ml-auto shadow-md hover:shadow-lg transition-shadow duration-200"
-                disabled={isSavingNote || !currentQuestion} // Also disable if no question was processed
+                disabled={isSavingNote || !currentQuestion} 
               >
                 {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Question &amp; Your Notes
@@ -348,3 +350,4 @@ export default function QuestionExplainer() {
     </div>
   );
 }
+
