@@ -4,11 +4,12 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
-import { LogIn, LogOut, UserPlus, ListChecks, MessageSquare } from 'lucide-react';
+import { LogIn, LogOut, UserPlus, ListChecks, MessageSquare, Sun, Moon } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import GeneralFeedbackDialog from './general-feedback-dialog';
+import { useTheme } from 'next-themes';
 
 export default function Header() {
   const { currentUser, logout, loading } = useAuth();
@@ -16,6 +17,12 @@ export default function Header() {
   const pathname = usePathname();
   const { toast } = useToast();
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -30,6 +37,23 @@ export default function Header() {
 
   const isAuthPage = pathname === '/login' || pathname === '/signup';
 
+  const renderThemeChanger = () => {
+    if (!mounted) {
+      return <Button variant="ghost" size="icon" disabled className="w-9 h-9" />; // Placeholder to prevent layout shift
+    }
+
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      >
+        {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+      </Button>
+    );
+  };
+
   return (
     <>
       <header className="py-4 px-6 bg-card shadow-md sticky top-0 z-50">
@@ -40,6 +64,7 @@ export default function Header() {
             </div>
           </Link>
           <nav className="flex items-center gap-2 sm:gap-3">
+            {renderThemeChanger()}
             <Button 
               variant="outline" 
               size="sm" 
