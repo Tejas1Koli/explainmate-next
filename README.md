@@ -98,12 +98,13 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
               allow read, write: if request.auth != null && request.auth.uid == userId;
             }
             // Allow authenticated users to submit feedback.
-            // The `read` permission allows any authenticated user to read all feedback.
-            // If feedback is sensitive and not displayed to users, consider restricting read access
-            // (e.g., `allow read: if false;` or implement admin roles with custom claims).
+            // Read access is disabled for clients to protect feedback privacy.
+            // Feedback should be reviewed via the Firebase Console or Admin SDK.
             match /explanationsFeedback/{feedbackId} {
               allow create: if request.auth != null;
-              allow read: if request.auth != null;
+              allow read: if false; // Prevents clients from reading feedback lists
+              // If you need admin read access via client SDK (not recommended for general users):
+              // allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
             }
           }
         }
@@ -128,10 +129,10 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 
 ## Security Best Practices
 
-*   **API Key Restrictions:**
-    *   **Firebase API Key (`NEXT_PUBLIC_FIREBASE_API_KEY`):** In the [Google Cloud Console](https://console.cloud.google.com/) -> APIs & Services -> Credentials, find your Firebase API key. Edit it and under "Application restrictions," select "HTTP referrers (web sites)." Add your deployed application domain(s) (e.g., `your-app-name.vercel.app`, `www.yourdomain.com`) and `localhost:9002` (or your development port). This prevents your Firebase project from being used by unauthorized websites.
-    *   **Google AI API Key (`GENKIT_GOOGLEAI_API_KEY`):** In the Google AI Studio or Google Cloud Console, restrict this API key to only allow access to the "Generative Language API" (or the specific Gemini API being used). Avoid giving it overly broad permissions.
-*   **Firestore Security Rules:** Regularly review your Firestore rules. The provided rules are a good starting point. If the `read` access on `explanationsFeedback` is too broad for your needs (i.e., feedback is not meant to be publicly readable by all authenticated users), tighten it. Consider admin roles via custom claims for more granular access control if needed.
+*   **API Key Restrictions (CRITICAL):**
+    *   **Firebase API Key (`NEXT_PUBLIC_FIREBASE_API_KEY`):** In the [Google Cloud Console](https://console.cloud.google.com/) -> APIs & Services -> Credentials, find your Firebase API key. Edit it and under "Application restrictions," select "HTTP referrers (web sites)." Add your deployed application domain(s) (e.g., `your-app-name.vercel.app`, `www.yourdomain.com`) and `localhost:9002` (or your development port). This prevents your Firebase project from being used by unauthorized websites. **This is a manual step you must perform in the Google Cloud Console.**
+    *   **Google AI API Key (`GENKIT_GOOGLEAI_API_KEY`):** In the Google AI Studio or Google Cloud Console, restrict this API key to only allow access to the "Generative Language API" (or the specific Gemini API being used). Avoid giving it overly broad permissions. **This is a manual step you must perform.**
+*   **Firestore Security Rules:** Regularly review your Firestore rules. The provided rules are a good starting point. The feedback `read` rule has been set to `allow read: if false;` to protect feedback privacy from client-side queries; feedback should be viewed by administrators via the Firebase Console or using the Firebase Admin SDK.
 *   **Dependency Updates:** Keep your npm packages up-to-date to patch known vulnerabilities. Use `npm audit` or `yarn audit` and consider tools like Dependabot.
 *   **Rate Limiting:** For production applications, consider implementing rate limiting on AI-intensive operations (like generating explanations or quizzes) to prevent abuse and control costs.
 
@@ -219,7 +220,7 @@ This error means your Firestore Security Rules are blocking the app from reading
     *   Select your project.
     *   Navigate to **Firestore Database** (under "Build").
     *   Click on the **Rules** tab.
-    *   **Replace the entire content** of the rules editor with the rules provided in **Step 5 of the Setup section** above.
+    *   **Replace the entire content** of the rules editor with the rules provided in **Step 5 of the Setup section** above. (The feedback `read` rule is now `allow read: if false;` for better privacy.)
     *   Click **Publish**.
 3.  **Verify User Authentication:** Ensure the user is logged in when trying to perform actions that require authentication (like saving or viewing notes). If `currentUser` is null in `useAuth()`, Firestore operations for authenticated users will fail.
 4.  **Check Firestore Paths:** Ensure the paths used in `src/lib/notes-storage.ts` and `src/lib/feedback-storage.ts` correctly match the paths defined in your security rules. The current paths are:
