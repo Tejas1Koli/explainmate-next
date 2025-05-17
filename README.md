@@ -7,7 +7,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 
 - **User Authentication**: Secure signup and login for personalized experiences.
 - **Question Input**: Users can input their STEM questions or concepts into a text area.
-- **AI Explanation**: The application utilizes a GenAI flow to generate clear and student-friendly explanations for the submitted questions/concepts, including Markdown and LaTeX formatting.
+- **AI Explanation**: The application utilizes a GenAI flow to generate clear and student-friendly explanations for the submitted questions/concepts, including Markdown and LaTeX formatting. It also provides an alternative API route `/api/explain` for direct Gemini calls with rate limiting.
 - **Additional Notes**: Users can add their personal notes to the AI-generated explanation.
 - **Save & View Notes**: Logged-in users can save their questions/concepts, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
 - **PDF Export**: Saved notes can be exported as PDF files.
@@ -22,7 +22,9 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 - Node.js (v18 or later recommended)
 - npm or yarn
 - A Firebase project
-- A Google AI Studio API Key (for Genkit)
+- A Google AI Studio API Key (for Genkit flows, e.g., `GENKIT_GOOGLEAI_API_KEY`)
+- A Google AI Studio API Key (for the direct SDK usage in `/api/explain`, e.g., `GEMINI_API_KEY`)
+- A Firebase Admin SDK Service Account Key (JSON file)
 
 ### Setup
 
@@ -42,28 +44,42 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 3.  **Set up Environment Variables:**
     *   **Create the `.env` file:** In the **root directory** of your project (alongside `package.json`), create a file named `.env`.
     *   **Copy and paste the following content** into your newly created `.env` file.
-    *   **VERY IMPORTANT:** You **MUST REPLACE** the placeholder values like `"YOUR_API_KEY"`, `"YOUR_AUTH_DOMAIN"`, `"YOUR_GOOGLE_AI_STUDIO_API_KEY"`, etc., with your **actual Firebase project credentials and Google AI Studio API key**.
+    *   **VERY IMPORTANT:** You **MUST REPLACE** the placeholder values with your **actual Firebase project credentials, Google AI Studio API keys, and Firebase Service Account details**.
 
     ```env
-    # Firebase Configuration
+    # Firebase Client Configuration
     # IMPORTANT: Replace "YOUR_API_KEY", "YOUR_AUTH_DOMAIN", etc.,
     # with your actual Firebase project credentials.
     # You can find these in your Firebase project settings:
     # Project settings > General > Your apps > Web app > SDK setup and configuration > Config
-
     NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_API_KEY"
     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_AUTH_DOMAIN"
     NEXT_PUBLIC_FIREBASE_PROJECT_ID="YOUR_PROJECT_ID"
     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="YOUR_MESSAGING_SENDER_ID"
     NEXT_PUBLIC_FIREBASE_APP_ID="YOUR_APP_ID"
-    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="YOUR_MEASUREMENT_ID" # Optional but recommended
+    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="YOUR_MEASUREMENT_ID" # Optional
 
-    # Genkit/Google AI Configuration
+    # Genkit/Google AI Configuration (for Genkit Flows)
     # Get this from Google AI Studio (https://makersuite.google.com/)
-    # This key was previously named GEMINI_API_KEY, it has been renamed to GENKIT_GOOGLEAI_API_KEY
-    # for consistency with Genkit's Google AI plugin.
-    GENKIT_GOOGLEAI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY"
+    # This key was previously named GEMINI_API_KEY in some contexts,
+    # it has been renamed to GENKIT_GOOGLEAI_API_KEY for consistency with Genkit's Google AI plugin.
+    GENKIT_GOOGLEAI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY_FOR_GENKIT"
+
+    # Google Generative AI SDK Configuration (for /api/explain route)
+    # This can be the same key as above or a different one.
+    # Get this from Google AI Studio (https://makersuite.google.com/)
+    GEMINI_API_KEY="YOUR_GOOGLE_AI_STUDIO_API_KEY_FOR_SDK"
+
+    # Firebase Admin SDK Configuration (for backend token verification and rate limiting)
+    # 1. Go to Firebase Console > Project Settings > Service accounts.
+    # 2. Click "Generate new private key" and download the JSON file.
+    # 3. DO NOT commit this file to Git.
+    # 4. Base64 encode the *content* of this JSON file. You can use an online tool or command line:
+    #    Linux/macOS: base64 -i path/to/your-service-account-file.json
+    #    Windows (PowerShell): [Convert]::ToBase64String([IO.File]::ReadAllBytes("path\to\your-service-account-file.json"))
+    # 5. Paste the resulting base64 string here.
+    FIREBASE_SERVICE_ACCOUNT_BASE64="YOUR_BASE64_ENCODED_SERVICE_ACCOUNT_JSON"
     ```
     **How to get Firebase credentials:**
     *   Go to the [Firebase Console](https://console.firebase.google.com/).
@@ -73,19 +89,25 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     *   If you haven't registered a web app, click the web icon (`</>`) to add one. Follow the instructions.
     *   Once your web app is registered, you'll find the `firebaseConfig` object. Copy the values from this object into your `.env` file for the corresponding `NEXT_PUBLIC_FIREBASE_...` variables.
 
-    **How to get Google AI Studio API Key:**
+    **How to get Google AI Studio API Key(s):**
     *   Go to [Google AI Studio](https://makersuite.google.com/).
     *   Sign in or create an account.
-    *   Create a new API key or use an existing one. Copy this key for `GENKIT_GOOGLEAI_API_KEY`.
+    *   Create a new API key or use an existing one. Copy this key. You might use the same key for both `GENKIT_GOOGLEAI_API_KEY` and `GEMINI_API_KEY`, or different keys if preferred.
+
+    **How to get Firebase Service Account Key:**
+    *   Go to your [Firebase Console](https://console.firebase.google.com/) -> Project Settings -> Service accounts tab.
+    *   Click "Generate new private key" under "Firebase Admin SDK." Confirm and download the JSON file.
+    *   **Secure this file.** Do not commit it to your repository.
+    *   Follow the instructions in the `.env` example above to base64 encode its content and set the `FIREBASE_SERVICE_ACCOUNT_BASE64` variable.
 
 4.  **Enable Firebase Authentication Methods:**
     *   In the Firebase Console, go to **Authentication**.
-    *   Under the **Sign-in method** tab, enable the "Email/Password" provider. (Google Sign-In can also be added here if desired later).
+    *   Under the **Sign-in method** tab, enable the "Email/Password" provider.
 
-5.  **Set up Firestore Database and Security Rules (CRITICAL for "Missing or insufficient permissions" error):**
+5.  **Set up Firestore Database and Security Rules (CRITICAL):**
     *   In the Firebase Console, go to **Firestore Database** (under Build).
     *   Click **Create database**.
-    *   Choose to start in **Production mode** (recommended) or Test mode. *If you choose Test mode, remember its rules expire after 30 days.*
+    *   Choose to start in **Production mode**.
     *   Select a Cloud Firestore location.
     *   After the database is created, go to the **Rules** tab within Firestore Database.
     *   **Replace the default rules** with the following rules. These rules are essential for the app to function correctly:
@@ -103,21 +125,26 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
             match /explanationsFeedback/{feedbackId} {
               allow create: if request.auth != null;
               allow read: if false; // Prevents clients from reading feedback lists
-              // If you need admin read access via client SDK (not recommended for general users):
-              // allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+            }
+            // Allow authenticated users to write their own rate limit entries
+            // Only backend (with admin privileges) should ideally read these for enforcement.
+            // This rule allows clients to create entries, which the /api/explain route does.
+            // For stronger security, only the admin SDK should write here.
+            // However, the current API route structure adds new requests directly.
+            match /rate_limits/{userId}/user_requests/{requestId} {
+              allow create: if request.auth != null && request.auth.uid == userId;
+              allow read, list: if request.auth != null && request.auth.uid == userId; // For simplicity, if client ever needed to see its own rate. Server normally checks.
             }
           }
         }
         ```
-    *   Click **Publish**. If you don't publish the rules, your app won't have the necessary permissions.
+    *   Click **Publish**.
 
 6.  **Run the development server:**
     ```bash
     npm run dev
-    # or
-    yarn dev
     ```
-    The application will be available at `http://localhost:9002` (or another port if 9002 is occupied).
+    The application will be available at `http://localhost:9002`.
     **Important:** If you just created or modified the `.env` file, or changed Firebase settings, you **MUST restart your development server** for the changes to take effect.
 
     If you are using Genkit with a local development server (e.g., for testing flows):
@@ -130,11 +157,12 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 ## Security Best Practices
 
 *   **API Key Restrictions (CRITICAL):**
-    *   **Firebase API Key (`NEXT_PUBLIC_FIREBASE_API_KEY`):** In the [Google Cloud Console](https://console.cloud.google.com/) -> APIs & Services -> Credentials, find your Firebase API key. Edit it and under "Application restrictions," select "HTTP referrers (web sites)." Add your deployed application domain(s) (e.g., `your-app-name.vercel.app`, `www.yourdomain.com`) and `localhost:9002` (or your development port). This prevents your Firebase project from being used by unauthorized websites. **This is a manual step you must perform in the Google Cloud Console.**
-    *   **Google AI API Key (`GENKIT_GOOGLEAI_API_KEY`):** In the Google AI Studio or Google Cloud Console, restrict this API key to only allow access to the "Generative Language API" (or the specific Gemini API being used). Avoid giving it overly broad permissions. **This is a manual step you must perform.**
-*   **Firestore Security Rules:** Regularly review your Firestore rules. The provided rules are a good starting point. The feedback `read` rule has been set to `allow read: if false;` to protect feedback privacy from client-side queries; feedback should be viewed by administrators via the Firebase Console or using the Firebase Admin SDK.
-*   **Dependency Updates:** Keep your npm packages up-to-date to patch known vulnerabilities. Use `npm audit` or `yarn audit` and consider tools like Dependabot.
-*   **Rate Limiting:** For production applications, consider implementing rate limiting on AI-intensive operations (like generating explanations or quizzes) to prevent abuse and control costs.
+    *   **Firebase Client API Key (`NEXT_PUBLIC_FIREBASE_API_KEY`):** In the [Google Cloud Console](https://console.cloud.google.com/) -> APIs & Services -> Credentials, find your Firebase API key. Edit it and under "Application restrictions," select "HTTP referrers (web sites)." Add your deployed application domain(s) (e.g., `your-app-name.vercel.app`, `www.yourdomain.com`) and `localhost:9002` (or your development port). This prevents your Firebase project from being used by unauthorized websites.
+    *   **Google AI API Keys (`GENKIT_GOOGLEAI_API_KEY`, `GEMINI_API_KEY`):** In the Google AI Studio or Google Cloud Console, restrict these API keys to only allow access to the "Generative Language API". Avoid giving them overly broad permissions.
+    *   **Firebase Service Account Key (`FIREBASE_SERVICE_ACCOUNT_BASE64`):** This key grants admin privileges to your Firebase project. **Protect it carefully.** Do not expose the raw JSON or the base64 string in client-side code or commit it to your repository. Store it securely as an environment variable on your deployment platform.
+*   **Firestore Security Rules:** Regularly review your Firestore rules. The provided rules are a good starting point. The feedback `read` rule is set to `allow read: if false;` to protect feedback privacy from client-side queries. The `rate_limits` rules currently allow client creation for simplicity of the API route; in a stricter setup, only a trusted server environment would write these.
+*   **Dependency Updates:** Keep your npm packages up-to-date. Use `npm audit` or `yarn audit`.
+*   **Rate Limiting:** The `/api/explain` route includes basic server-side rate limiting. Consider more sophisticated strategies for production.
 
 ## Application Structure
 
@@ -143,97 +171,42 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/app/(auth)/login/page.tsx`: Login page.
     -   `src/app/(auth)/signup/page.tsx`: Signup page.
     -   `src/app/saved-notes/page.tsx`: Page to view saved notes.
+    -   `src/app/api/explain/route.ts`: API route for AI explanations with rate limiting.
 -   **`src/components/`**: Reusable UI components.
-    -   `src/components/question-explainer.tsx`: Core component for question input and explanation display.
-    -   `src/components/saved-notes-viewer.tsx`: Component for displaying and managing saved notes.
-    -   `src/components/header.tsx`: Application header with navigation and auth status.
-    -   `src/components/general-feedback-dialog.tsx`: Dialog for submitting general app feedback.
-    -   `src/components/theme-provider.tsx`: For managing light/dark themes.
-    -   `src/components/ui/`: Shadcn UI components.
--   **`src/ai/`**: GenAI related code.
-    -   `src/ai/flows/explain-stem-concept.ts`: Genkit flow for generating explanations for STEM concepts.
-    -   `src/ai/flows/generate-quiz-flow.ts`: Genkit flow for generating quizzes from explanations.
-    -   `src/ai/genkit.ts`: Genkit initialization and configuration.
--   **`src/lib/`**: Utility functions and Firebase integration.
-    -   `src/lib/firebase.ts`: Firebase initialization.
-    *   `src/lib/notes-storage.ts`: Functions for interacting with Firestore to manage saved notes (path: `users/{userId}/notes`).
-    *   `src/lib/feedback-storage.ts`: Functions for interacting with Firestore to manage feedback (path: `explanationsFeedback`).
+-   **`src/ai/`**: GenAI related code (primarily Genkit flows).
+-   **`src/lib/`**: Utility functions, Firebase client & admin integration.
+    -   `src/lib/firebase.ts`: Firebase client SDK initialization.
+    -   `src/lib/firebase-admin.ts`: Firebase Admin SDK initialization.
+    -   `src/lib/notes-storage.ts`: Functions for Firestore note management.
+    -   `src/lib/feedback-storage.ts`: Functions for Firestore feedback management.
 -   **`src/contexts/`**: React Context providers.
-    -   `src/contexts/auth-context.tsx`: Manages user authentication state.
 -   **`src/hooks/`**: Custom React hooks.
-    -   `src/hooks/use-toast.ts`: Hook for displaying toast notifications.
-    -   `src/hooks/use-mobile.tsx`: Hook for detecting mobile view.
 
 ## Troubleshooting Firebase Errors
 
 ### Critical: `Firebase: Error (auth/configuration-not-found)` or `Firebase: Error (auth/api-key-not-valid...)`
-
-This is the most common setup error. It means Firebase isn't loading its configuration correctly, usually due to issues with your `.env` file.
-
-**Follow these steps METICULOUSLY:**
-
-1.  **`.env` File Location (CRITICAL):**
-    *   The `.env` file **MUST** be in the **ROOT DIRECTORY** of your project. This is the same folder that contains `package.json` and `next.config.ts`.
-    *   It should **NOT** be in `src/` or any other subfolder.
-
-2.  **Correct Variable Names in `.env` (CRITICAL):**
-    *   Open your `.env` file.
-    *   All Firebase variables **MUST** start with `NEXT_PUBLIC_`. For example:
-        *   `NEXT_PUBLIC_FIREBASE_API_KEY="YOUR_ACTUAL_API_KEY"`
-        *   `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="YOUR_ACTUAL_AUTH_DOMAIN"`
-        *   ...and so on for all `NEXT_PUBLIC_FIREBASE_...` variables.
-    *   The Genkit key is `GENKIT_GOOGLEAI_API_KEY` (no `NEXT_PUBLIC_` prefix as it's used server-side by Genkit).
-
-3.  **Correct Values in `.env` (CRITICAL):**
-    *   Ensure you have replaced **ALL placeholder values** (like `"YOUR_API_KEY"`, `"YOUR_GOOGLE_AI_STUDIO_API_KEY"`) with your *actual* credentials from your Firebase project and Google AI Studio.
-    *   **No typos!** Even one wrong character will cause this error.
-    *   Double-check that you've copied *all* the necessary Firebase config values from your Firebase project settings (Project settings > General > Your apps > Web app > SDK setup and configuration > Config).
-
-4.  **Restart Development Server (CRITICAL):**
-    *   **This is the step most often missed.** After creating or making *any* changes to the `.env` file, you **MUST** stop your Next.js development server (usually `Ctrl+C` in the terminal) and then **restart it** (e.g., `npm run dev` or `yarn dev`).
-    *   Next.js only loads environment variables when the server starts.
-
-5.  **Verify Firebase Project Setup:**
-    *   Go to your [Firebase Console](https://console.firebase.google.com/).
-    *   Select your project.
-    *   Go to **Project settings** (gear icon) > **General** tab.
-    *   Scroll to "Your apps" and select your web app.
-    *   In the "SDK setup and configuration" section, choose "Config".
-    *   Carefully compare these values with what you have in your `.env` file. Ensure they match exactly.
-    *   Confirm that the necessary services (**Authentication** with Email/Password provider enabled, and **Firestore** in Native Mode with the correct **Rules** published) are enabled in your Firebase project.
-
-**Check Browser Console for Diagnostic Logs:**
-*   After trying the steps above, open your application's login page.
-*   Open your browser's developer console (usually by pressing F12).
-*   You should see lines starting with `DIAGNOSTIC: NEXT_PUBLIC_FIREBASE_API_KEY: ...`
-*   If `process.env.NEXT_PUBLIC_FIREBASE_API_KEY` shows as `undefined` or the placeholder value, it confirms your `.env` file or server restart is the issue.
-
-If you are using the Google AI provider for Genkit, ensure `GENKIT_GOOGLEAI_API_KEY` is also correctly set in your `.env` file.
+This usually means issues with your `.env` file for client-side Firebase.
+1.  **`.env` File Location:** Root directory (with `package.json`).
+2.  **Correct Variable Names:** `NEXT_PUBLIC_FIREBASE_...` for all client-side Firebase vars.
+3.  **Correct Values:** Ensure actual credentials from Firebase project settings.
+4.  **Restart Development Server:** Crucial after any `.env` changes.
+5.  **Verify Firebase Project Setup:** Check values in Firebase Console.
 
 ### Critical: `FirebaseError: Missing or insufficient permissions.`
+This means your Firestore Security Rules are blocking an operation.
+1.  **Deploy Security Rules:** Ensure the rules from Step 5 of Setup are published in Firebase Console -> Firestore Database -> Rules.
+2.  **Verify User Authentication:** The user must be logged in for operations requiring auth.
+3.  **Check Firestore Paths:** Ensure paths in code match rules.
 
-This error means your Firestore Security Rules are blocking the app from reading or writing data.
-
-1.  **Ensure Firestore is Set Up:** Follow step 5 in the "Setup" section above to create your Firestore database.
-2.  **Deploy Security Rules (VERY IMPORTANT):**
-    *   Go to your [Firebase Console](https://console.firebase.google.com/).
-    *   Select your project.
-    *   Navigate to **Firestore Database** (under "Build").
-    *   Click on the **Rules** tab.
-    *   **Replace the entire content** of the rules editor with the rules provided in **Step 5 of the Setup section** above. (The feedback `read` rule is now `allow read: if false;` for better privacy.)
-    *   Click **Publish**.
-3.  **Verify User Authentication:** Ensure the user is logged in when trying to perform actions that require authentication (like saving or viewing notes). If `currentUser` is null in `useAuth()`, Firestore operations for authenticated users will fail.
-4.  **Check Firestore Paths:** Ensure the paths used in `src/lib/notes-storage.ts` and `src/lib/feedback-storage.ts` correctly match the paths defined in your security rules. The current paths are:
-    *   Notes: `users/{userId}/notes/{noteId}`
-    *   Feedback: `explanationsFeedback/{feedbackId}`
-    These paths align with the provided rules.
-
-If you've deployed the correct rules and are still getting permission errors, check your browser console for any other Firebase errors and ensure your application logic correctly handles user authentication state before attempting Firestore operations.
+### Critical: `Firebase Admin SDK: FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable is not set.` or `Error initializing Firebase Admin SDK`
+This means the backend Firebase Admin SDK (used in `/api/explain`) couldn't initialize.
+1.  **Service Account Key:** Ensure you have downloaded the service account JSON file from Firebase Project Settings -> Service accounts.
+2.  **Base64 Encoding:** Correctly base64 encode the *entire content* of the JSON file.
+3.  **Environment Variable:** Ensure `FIREBASE_SERVICE_ACCOUNT_BASE64` is set in your `.env` file (for local development) and in your deployment environment (Vercel, Netlify) with the correct base64 string.
+4.  **Restart Server:** If running locally, restart the dev server after setting the `.env` variable.
 
 ### PDF Export Error (`Could not export the note to PDF`)
-If you encounter issues with PDF export, specifically if KaTeX (math rendering) styles are not applied correctly in the exported PDF:
-* The PDF export function in `src/components/saved-notes-viewer.tsx` attempts to dynamically add the KaTeX stylesheet.
-* Ensure you are connected to the internet when exporting, as it tries to load `https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css`.
-* If issues persist, check the browser console for errors during the `html2canvas` process. The filename for exported PDFs is `stem_concept_note_<note_id_prefix>.pdf`.
+Ensure internet connection for KaTeX CSS loading. Check browser console for `html2canvas` errors.
 
-    
+```
+
