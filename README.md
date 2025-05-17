@@ -12,6 +12,8 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 - **Save & View Notes**: Logged-in users can save their questions/concepts, AI explanations, and personal notes. They can view, edit, and delete these saved notes.
 - **PDF Export**: Saved notes can be exported as PDF files.
 - **Feedback**: Users can provide feedback (helpful/not helpful with comments) on AI explanations and general app feedback.
+- **Quizify**: Generate a quiz based on the AI explanation.
+- **Dark Mode**: User-selectable light and dark themes.
 
 ## Getting Started
 
@@ -27,7 +29,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
 1.  **Clone the repository:**
     ```bash
     git clone <repository_url>
-    cd explainmate-ai 
+    cd explainmate-ai
     ```
 
 2.  **Install dependencies:**
@@ -87,7 +89,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     *   Select a Cloud Firestore location.
     *   After the database is created, go to the **Rules** tab within Firestore Database.
     *   **Replace the default rules** with the following rules. These rules are essential for the app to function correctly:
-        ```json
+        ```firestore_rules
         rules_version = '2';
         service cloud.firestore {
           match /databases/{database}/documents {
@@ -96,10 +98,12 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
               allow read, write: if request.auth != null && request.auth.uid == userId;
             }
             // Allow authenticated users to submit feedback.
-            // For production, you might want to restrict read access if feedback isn't displayed.
+            // The `read` permission allows any authenticated user to read all feedback.
+            // If feedback is sensitive and not displayed to users, consider restricting read access
+            // (e.g., `allow read: if false;` or implement admin roles with custom claims).
             match /explanationsFeedback/{feedbackId} {
               allow create: if request.auth != null;
-              allow read: if request.auth != null; // Or adjust as needed
+              allow read: if request.auth != null;
             }
           }
         }
@@ -122,6 +126,15 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     npm run genkit:watch
     ```
 
+## Security Best Practices
+
+*   **API Key Restrictions:**
+    *   **Firebase API Key (`NEXT_PUBLIC_FIREBASE_API_KEY`):** In the [Google Cloud Console](https://console.cloud.google.com/) -> APIs & Services -> Credentials, find your Firebase API key. Edit it and under "Application restrictions," select "HTTP referrers (web sites)." Add your deployed application domain(s) (e.g., `your-app-name.vercel.app`, `www.yourdomain.com`) and `localhost:9002` (or your development port). This prevents your Firebase project from being used by unauthorized websites.
+    *   **Google AI API Key (`GENKIT_GOOGLEAI_API_KEY`):** In the Google AI Studio or Google Cloud Console, restrict this API key to only allow access to the "Generative Language API" (or the specific Gemini API being used). Avoid giving it overly broad permissions.
+*   **Firestore Security Rules:** Regularly review your Firestore rules. The provided rules are a good starting point. If the `read` access on `explanationsFeedback` is too broad for your needs (i.e., feedback is not meant to be publicly readable by all authenticated users), tighten it. Consider admin roles via custom claims for more granular access control if needed.
+*   **Dependency Updates:** Keep your npm packages up-to-date to patch known vulnerabilities. Use `npm audit` or `yarn audit` and consider tools like Dependabot.
+*   **Rate Limiting:** For production applications, consider implementing rate limiting on AI-intensive operations (like generating explanations or quizzes) to prevent abuse and control costs.
+
 ## Application Structure
 
 -   **`src/app/`**: Main application pages (App Router).
@@ -134,9 +147,11 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/components/saved-notes-viewer.tsx`: Component for displaying and managing saved notes.
     -   `src/components/header.tsx`: Application header with navigation and auth status.
     -   `src/components/general-feedback-dialog.tsx`: Dialog for submitting general app feedback.
+    -   `src/components/theme-provider.tsx`: For managing light/dark themes.
     -   `src/components/ui/`: Shadcn UI components.
 -   **`src/ai/`**: GenAI related code.
     -   `src/ai/flows/explain-stem-concept.ts`: Genkit flow for generating explanations for STEM concepts.
+    -   `src/ai/flows/generate-quiz-flow.ts`: Genkit flow for generating quizzes from explanations.
     -   `src/ai/genkit.ts`: Genkit initialization and configuration.
 -   **`src/lib/`**: Utility functions and Firebase integration.
     -   `src/lib/firebase.ts`: Firebase initialization.
@@ -146,6 +161,7 @@ This is a NextJS application built with Firebase Studio that provides AI-powered
     -   `src/contexts/auth-context.tsx`: Manages user authentication state.
 -   **`src/hooks/`**: Custom React hooks.
     -   `src/hooks/use-toast.ts`: Hook for displaying toast notifications.
+    -   `src/hooks/use-mobile.tsx`: Hook for detecting mobile view.
 
 ## Troubleshooting Firebase Errors
 
@@ -218,3 +234,5 @@ If you encounter issues with PDF export, specifically if KaTeX (math rendering) 
 * The PDF export function in `src/components/saved-notes-viewer.tsx` attempts to dynamically add the KaTeX stylesheet.
 * Ensure you are connected to the internet when exporting, as it tries to load `https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css`.
 * If issues persist, check the browser console for errors during the `html2canvas` process. The filename for exported PDFs is `stem_concept_note_<note_id_prefix>.pdf`.
+
+    
