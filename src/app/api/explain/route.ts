@@ -10,29 +10,38 @@ const TIME_WINDOW_SECONDS = 60;
 
 if (!GEMINI_API_KEY) {
   console.error("Gemini API Key (GEMINI_API_KEY) is not set in environment variables.");
-  // Potentially throw an error or handle this so the app doesn't try to run without it
 }
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
+const genZSystemPrompt = `You are an AI assistant explaining STEM concepts. Your audience is Gen Z.
+Your tone should be casual, relatable, engaging, and fun. Use clear language, and if appropriate, sprinkle in some relevant Gen Z slang (like "no cap", "bet", "rizz", "iykyk", "the gag is", "periodt", "vibe check", "main character energy") and emojis (like ✨, 💅, 🧠, 🚀, 🤔, 😅).
+Explain concepts as if you're talking to a friend. Make it understandable and low-key entertaining.
+Structure your explanation well. Use Markdown for formatting:
+- **Headings**: Use Markdown headings (e.g., \`## Sub-topic\`). Start with H2 or H3 for main sections.
+- **Emphasis**: Use bold (\`**text**\`) for key terms or important points, and italics (\`*text*\`) for emphasis.
+- **Lists**: Use bullet points (\`- point\`) or numbered lists (\`1. point\`).
+- **Mathematical Expressions**: For any math, use LaTeX. Inline: \`$...$\`. Block: \`$$...$$\`.
+Keep it real and make learning feel like less of a chore and more of a glow-up for their brain!  Glow up that explanation!`;
+
 export async function POST(request: NextRequest) {
   if (!firebaseAdminAuth || !firebaseAdminFirestore) {
     console.error('Firebase Admin SDK not initialized.');
-    return NextResponse.json({ error: 'Server configuration error.' }, { status: 500 });
+    return NextResponse.json({ error: 'Server configuration error. Kinda sus.' }, { status: 500 });
   }
   if (!genAI) {
-    console.error('Gemini SDK not initialized due to missing API key.');
-    return NextResponse.json({ error: 'AI service not configured.' }, { status: 500 });
+    console.error('Gemini SDK not initialized due to missing API key. That\'s a major L.');
+    return NextResponse.json({ error: 'AI service not configured. Sadge.' }, { status: 500 });
   }
 
   try {
     const { prompt, idToken } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json({ error: 'Prompt is required and must be a string.' }, { status: 400 });
+      return NextResponse.json({ error: 'Prompt is required and must be a string. Spill the tea on what you need explained!' }, { status: 400 });
     }
     if (!idToken || typeof idToken !== 'string') {
-      return NextResponse.json({ error: 'Firebase ID token is required.' }, { status: 400 });
+      return NextResponse.json({ error: 'Firebase ID token is required. Gotta log in, bestie.' }, { status: 400 });
     }
 
     // 1. Verify Firebase Auth ID token
@@ -41,7 +50,7 @@ export async function POST(request: NextRequest) {
       decodedToken = await firebaseAdminAuth.verifyIdToken(idToken);
     } catch (error) {
       console.error('Error verifying Firebase ID token:', error);
-      return NextResponse.json({ error: 'Invalid authentication token.' }, { status: 401 });
+      return NextResponse.json({ error: 'Invalid authentication token. This ain\'t it, chief.' }, { status: 401 });
     }
     const userId = decodedToken.uid;
 
@@ -58,7 +67,7 @@ export async function POST(request: NextRequest) {
     const requestCount = requestsSnapshot.data().count;
 
     if (requestCount >= MAX_REQUESTS) {
-      return NextResponse.json({ error: `Rate limit exceeded. Try again in ${TIME_WINDOW_SECONDS} seconds.` }, { status: 429 });
+      return NextResponse.json({ error: `Rate limit exceeded. You're doing too much! Try again in ${TIME_WINDOW_SECONDS} seconds. Chill for a bit. 💅` }, { status: 429 });
     }
 
     // If allowed, increment request count (by adding a new request document)
@@ -66,9 +75,12 @@ export async function POST(request: NextRequest) {
 
     // 3. Call Gemini API
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" }); // Using gemini-pro as a default
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-pro",
+        systemInstruction: genZSystemPrompt, // Added system instruction for Gen Z tone
+      }); 
       const generationConfig = {
-        temperature: 0.7,
+        temperature: 0.7, // A bit of creativity but still factual
         topK: 1,
         topP: 1,
         maxOutputTokens: 2048,
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
       
       if (result.response.promptFeedback && result.response.promptFeedback.blockReason) {
         console.warn('Gemini response blocked:', result.response.promptFeedback.blockReason);
-        return NextResponse.json({ error: `Content generation blocked due to: ${result.response.promptFeedback.blockReason}` }, { status: 400 });
+        return NextResponse.json({ error: `Content generation blocked due to: ${result.response.promptFeedback.blockReason}. Oof, AI said no. 😬` }, { status: 400 });
       }
 
       const geminiResponseText = result.response.text();
@@ -96,11 +108,12 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      return NextResponse.json({ error: 'Failed to get explanation from AI service.' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to get explanation from AI service. The AI is having a moment, try again later.' }, { status: 500 });
     }
 
   } catch (error) {
     console.error('Error in /api/explain POST handler:', error);
-    return NextResponse.json({ error: 'An unexpected server error occurred.' }, { status: 500 });
+    return NextResponse.json({ error: 'An unexpected server error occurred. Server said 📉.' }, { status: 500 });
   }
 }
+
