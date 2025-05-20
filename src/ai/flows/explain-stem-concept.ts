@@ -12,14 +12,23 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const Tones = ["normal", "genZ", "brutalHonest"] as const; // Not exported anymore
+const Tones = ["normal", "genZ", "brutalHonest"] as const;
 export type Tone = (typeof Tones)[number];
 
+// Schema for the flow's public input
 const ExplainSTEMConceptInputSchema = z.object({
   question: z.string().describe('The STEM concept or question to explain.'),
   tone: z.enum(Tones).optional().default("normal").describe('The desired tone for the explanation.'),
 });
 export type ExplainSTEMConceptInput = z.infer<typeof ExplainSTEMConceptInputSchema>;
+
+// Schema for the prompt's direct input (internal)
+const ExplainSTEMConceptPromptInternalInputSchema = z.object({
+  question: z.string(),
+  promptTone_normal: z.boolean(),
+  promptTone_genZ: z.boolean(),
+  promptTone_brutalHonest: z.boolean(),
+});
 
 const ExplainSTEMConceptOutputSchema = z.object({
   explanation: z.string().describe('The explanation of the STEM concept or question, formatted in Markdown with LaTeX for math, including points, bold, italics, headings, and adhering to the selected tone.'),
@@ -32,21 +41,10 @@ export async function explainSTEMConcept(input: ExplainSTEMConceptInput): Promis
 
 const explainSTEMConceptPrompt = ai.definePrompt({
   name: 'explainSTEMConceptPrompt',
-  input: {schema: ExplainSTEMConceptInputSchema},
+  input: {schema: ExplainSTEMConceptPromptInternalInputSchema}, // Uses internal schema
   output: {schema: ExplainSTEMConceptOutputSchema},
   prompt: `
-  You are an AI assistant tasked with explaining a STEM concept or question. Your response should be tailored to the persona defined by the 'tone' parameter.
-
-  **Common Instructions for all tones:**
-  - Structure your explanation well.
-  - Use Markdown for formatting:
-    - **Headings**: Use Markdown headings (e.g., \`## Sub-topic\`). Start with H2 or H3 for main sections.
-    - **Emphasis**: Use bold (\`**text**\`) for key terms or important points, and italics (\`*text*\`) for emphasis.
-    - **Lists**: Use bullet points (\`- point\`) or numbered lists (\`1. point\`).
-    - **Mathematical Expressions**: For any math, use LaTeX. Inline: \`$...$\`. Block: \`$$...$$\`.
-  - Ensure the explanation is accurate and clear for the target audience of the chosen tone.
-
-  {{#if (eq tone "genZ")}}
+  {{#if promptTone_genZ}}
   **Persona: Gen Z Tutor (The Cool Explainer)**
   Yo! You're like, the coolest STEM tutor ever, kinda like a super smart TikTokker or YouTuber who knows how to make complex stuff make sense. 🧠✨
   Break down this STEM concept or question for a Gen Z learner. Keep it 💯, make it easy to get, and low-key fun.
@@ -58,7 +56,8 @@ const explainSTEMConceptPrompt = ai.definePrompt({
   - **Slang (If it Fits)**: If you can naturally drop in some Gen Z slang (like "no cap", "bet", "rizz", "iykyk", "the gag is", "periodt", "vibe check", "main character energy") and it makes sense, go for it. But if it feels forced, just skip it. Authenticity is key.
   - **Tone**: Casual, friendly, enthusiastic, and super clear. Imagine you're explaining it to a friend over boba.
   Let's make this explanation iconic!
-  {{else if (eq tone "brutalHonest")}}
+  {{/if}}
+  {{#if promptTone_brutalHonest}}
   **Persona: Brutally Honest STEM Expert**
   Alright, let's cut the fluff. You are a brutally honest STEM expert. Your explanations are direct, no-nonsense, and get straight to the core of the matter. You don't sugarcoat complicated topics or coddle the learner.
   Your goal is to deliver the unvarnished truth of the concept, focusing on fundamental understanding.
@@ -68,7 +67,8 @@ const explainSTEMConceptPrompt = ai.definePrompt({
   - **Concise**: Keep it as short as possible while still being comprehensive in covering the core.
   - **Accuracy is Paramount**: Even though you're being direct, the information must be impeccably accurate.
   Give it to them straight.
-  {{else}}
+  {{/if}}
+  {{#if promptTone_normal}}
   **Persona: Standard Expert STEM Tutor**
   You are an expert STEM tutor. Your primary goal is to explain the concept or question in a clear, concise, accurate, and easily understandable manner.
   - **Clarity**: Use simple language where possible, but don't shy away from technical terms if they are essential (and explain them if necessary).
@@ -78,6 +78,15 @@ const explainSTEMConceptPrompt = ai.definePrompt({
   Provide a standard, high-quality explanation.
   {{/if}}
 
+  **Common Instructions for all tones (apply these IN ADDITION to the persona-specific instructions above):**
+  - Structure your explanation well.
+  - Use Markdown for formatting:
+    - **Headings**: Use Markdown headings (e.g., \`## Sub-topic\`). Start with H2 or H3 for main sections.
+    - **Emphasis**: Use bold (\`**text**\`) for key terms or important points, and italics (\`*text*\`) for emphasis.
+    - **Lists**: Use bullet points (\`- point\`) or numbered lists (\`1. point\`).
+    - **Mathematical Expressions**: For any math, use LaTeX. Inline: \`$...$\`. Block: \`$$...$$\`.
+  - Ensure the explanation is accurate and clear for the target audience of the chosen tone.
+
   Question/Concept to explain: {{{question}}}
   `,
 });
@@ -85,11 +94,19 @@ const explainSTEMConceptPrompt = ai.definePrompt({
 const explainSTEMConceptFlow = ai.defineFlow(
   {
     name: 'explainSTEMConceptFlow',
-    inputSchema: ExplainSTEMConceptInputSchema,
+    inputSchema: ExplainSTEMConceptInputSchema, // Flow's public input schema
     outputSchema: ExplainSTEMConceptOutputSchema,
   },
-  async input => {
-    const {output} = await explainSTEMConceptPrompt(input);
+  async (input: ExplainSTEMConceptInput) => {
+    // Prepare variables for the Handlebars template
+    const templateVars = {
+      question: input.question,
+      promptTone_genZ: input.tone === 'genZ',
+      promptTone_brutalHonest: input.tone === 'brutalHonest',
+      promptTone_normal: input.tone === 'normal',
+    };
+    const {output} = await explainSTEMConceptPrompt(templateVars);
     return output!;
   }
 );
+
