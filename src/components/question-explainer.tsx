@@ -34,7 +34,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
 import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon, Code, BrainCircuit, CheckCircle, XCircle } from 'lucide-react';
-import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput, Tone } from '@/ai/flows/explain-stem-concept';
+// import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput, Tone } from '@/ai/flows/explain-stem-concept'; // Genkit flow no longer primary
+import type { Tone } from '@/ai/flows/explain-stem-concept'; // Still need Tone type
 import { generateQuizFromExplanation, GenerateQuizInput, GenerateQuizOutput, QuizQuestion } from '@/ai/flows/generate-quiz-flow';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
@@ -217,7 +218,6 @@ export default function QuestionExplainer() {
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
-    // setShowRawMarkdown(false); // Keep raw markdown view preference
     feedbackForm.reset();
     resetQuizState(true); // Reset quiz state and close dialog
 
@@ -229,12 +229,37 @@ export default function QuestionExplainer() {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
     }
 
+    if (!currentUser) {
+      setError("Please log in to get an explanation.");
+      setIsLoadingExplanation(false);
+      toast({ title: "Login Required", description: "You need to be logged in to get explanations.", variant: "destructive" });
+      return;
+    }
+
     try {
-      const input: ExplainSTEMConceptInput = { question: values.question, tone: selectedTone };
-      const result: ExplainSTEMConceptOutput = await explainSTEMConcept(input);
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/explain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: values.question,
+          idToken,
+          tone: selectedTone,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `API request failed with status ${response.status}`);
+      }
+      
       setExplanation(result.explanation);
+
     } catch (err) {
-      console.error("Error fetching explanation:", err);
+      console.error("Error fetching explanation via API route:", err);
       let errorMessage = "Failed to generate explanation. Please check your connection or try again later.";
       if (err instanceof Error) {
         errorMessage = `An error occurred: ${err.message}. Please try again.`;
@@ -443,7 +468,7 @@ export default function QuestionExplainer() {
 
               <Button 
                 type="submit" 
-                disabled={isLoadingExplanation || authLoading} 
+                disabled={isLoadingExplanation || authLoading || !currentUser} 
                 className="w-full text-lg py-3 rounded-md shadow-md hover:shadow-lg transition-shadow duration-200"
                 variant="default"
               >
@@ -456,6 +481,11 @@ export default function QuestionExplainer() {
                   'Get Explanation'
                 )}
               </Button>
+              {!currentUser && !authLoading && (
+                <p className="text-sm text-center text-muted-foreground">
+                  Please <Link href="/login" className="text-primary hover:underline">log in</Link> or <Link href="/signup" className="text-primary hover:underline">sign up</Link> to get explanations.
+                </p>
+              )}
             </form>
           </Form>
         </CardContent>

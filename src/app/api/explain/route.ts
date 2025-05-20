@@ -1,19 +1,24 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { firebaseAdminAuth, firebaseAdminFirestore } from '@/lib/firebase-admin';
+import { firebaseAdminAuth } from '@/lib/firebase-admin'; // Removed firebaseAdminFirestore
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { Timestamp } from 'firebase-admin/firestore';
+// import { Timestamp } from 'firebase-admin/firestore'; // No longer needed for rate limiting here
 import type { Tone } from '@/ai/flows/explain-stem-concept'; // Import Tone type
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MAX_REQUESTS = 5;
-const TIME_WINDOW_SECONDS = 60;
+const TIME_WINDOW_SECONDS = 60 * 1000; // 60 seconds in milliseconds
 
 if (!GEMINI_API_KEY) {
   console.error("Gemini API Key (GEMINI_API_KEY) is not set in environment variables.");
 }
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+// In-memory store for rate limiting
+// WARNING: This is per-instance in a serverless environment and NOT globally consistent.
+// For global rate limiting without Firestore writes, consider Upstash Redis (free tier).
+const userRequests = new Map<string, { count: number; windowStart: number }>();
 
 const getSystemInstructionForTone = (tone: Tone = "normal"): string => {
   const commonInstructions = `
@@ -47,7 +52,7 @@ const getSystemInstructionForTone = (tone: Tone = "normal"): string => {
 
 
 export async function POST(request: NextRequest) {
-  if (!firebaseAdminAuth || !firebaseAdminFirestore) {
+  if (!firebaseAdminAuth) {
     console.error('Firebase Admin SDK not initialized.');
     return NextResponse.json({ error: 'Server configuration error. Kinda sus.' }, { status: 500 });
   }
@@ -75,22 +80,28 @@ export async function POST(request: NextRequest) {
     }
     const userId = decodedToken.uid;
 
-    const rateLimitCollectionRef = firebaseAdminFirestore.collection('rate_limits').doc(userId).collection('user_requests');
-    const now = Timestamp.now();
-    const windowStart = Timestamp.fromMillis(now.toMillis() - TIME_WINDOW_SECONDS * 1000);
+    // In-memory rate limiting logic
+    const now = Date.now();
+    const userRecord = userRequests.get(userId);
 
-    const requestsSnapshot = await rateLimitCollectionRef
-      .where('timestamp', '>=', windowStart)
-      .count()
-      .get();
-
-    const requestCount = requestsSnapshot.data().count;
-
-    if (requestCount >= MAX_REQUESTS) {
-      return NextResponse.json({ error: `Rate limit exceeded. You're doing too much! Try again in ${TIME_WINDOW_SECONDS} seconds. Chill for a bit. 💅` }, { status: 429 });
+    if (userRecord && (now - userRecord.windowStart < TIME_WINDOW_SECONDS)) {
+      if (userRecord.count >= MAX_REQUESTS) {
+        return NextResponse.json({ error: `Rate limit exceeded. You're doing too much! Try again in a minute. Chill for a bit. 💅` }, { status: 429 });
+      }
+      userRecord.count++;
+    } else {
+      // New window or user
+      userRequests.set(userId, { count: 1, windowStart: now });
+    }
+    // Clean up old entries from the map occasionally (optional, simple cleanup)
+    if (userRequests.size > 1000) { // Example threshold
+        for (const [key, record] of userRequests.entries()) {
+            if (now - record.windowStart > TIME_WINDOW_SECONDS * 2) { // Clean if older than 2 windows
+                userRequests.delete(key);
+            }
+        }
     }
 
-    await rateLimitCollectionRef.add({ timestamp: now });
 
     try {
       const systemInstruction = getSystemInstructionForTone(tone);
