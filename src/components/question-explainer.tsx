@@ -25,16 +25,16 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
+  FormLabel as ShadFormLabel, // Renamed to avoid conflict
   FormMessage,
 } from "@/components/ui/form";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label"; // For RadioGroup labels
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Separator } from "@/components/ui/separator";
 import { Loader2, AlertCircle, Save, LogIn, ThumbsUp, ThumbsDown, MessageSquare as FeedbackMessageIcon, Code, BrainCircuit, CheckCircle, XCircle } from 'lucide-react';
-import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput } from '@/ai/flows/explain-stem-concept';
+import { explainSTEMConcept, ExplainSTEMConceptInput, ExplainSTEMConceptOutput, Tone } from '@/ai/flows/explain-stem-concept';
 import { generateQuizFromExplanation, GenerateQuizInput, GenerateQuizOutput, QuizQuestion } from '@/ai/flows/generate-quiz-flow';
 import { useToast } from '@/hooks/use-toast';
 import { addSavedNote } from '@/lib/notes-storage';
@@ -66,7 +66,11 @@ const SESSION_STORAGE_KEYS = {
   USER_ANSWERS: 'explainerUserAnswers',
   QUIZ_SUBMITTED: 'explainerQuizSubmitted',
   QUIZ_SCORE: 'explainerQuizScore',
+  SELECTED_TONE: 'explainerSelectedTone',
 };
+
+// Define Tones array locally for UI rendering
+const TonesForUI = ["normal", "genZ", "brutalHonest"] as const;
 
 
 export default function QuestionExplainer() {
@@ -81,6 +85,7 @@ export default function QuestionExplainer() {
   const [showFeedbackInput, setShowFeedbackInput] = useState<boolean>(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
   const [showRawMarkdown, setShowRawMarkdown] = useState<boolean>(false);
+  const [selectedTone, setSelectedTone] = useState<Tone>("normal");
 
   // Quiz state
   const [quizTitle, setQuizTitle] = useState<string | null>(null);
@@ -138,6 +143,9 @@ export default function QuestionExplainer() {
       const storedError = sessionStorage.getItem(SESSION_STORAGE_KEYS.ERROR);
       if (storedError) setError(storedError);
 
+      const storedSelectedTone = sessionStorage.getItem(SESSION_STORAGE_KEYS.SELECTED_TONE) as Tone | null;
+      if (storedSelectedTone && TonesForUI.includes(storedSelectedTone)) setSelectedTone(storedSelectedTone);
+
       // Quiz state loading
       const storedQuizTitle = sessionStorage.getItem(SESSION_STORAGE_KEYS.QUIZ_TITLE);
       if (storedQuizTitle) setQuizTitle(storedQuizTitle);
@@ -164,6 +172,7 @@ export default function QuestionExplainer() {
       sessionStorage.setItem(SESSION_STORAGE_KEYS.FEEDBACK_SUBMITTED, JSON.stringify(feedbackSubmitted));
       sessionStorage.setItem(SESSION_STORAGE_KEYS.SHOW_FEEDBACK_INPUT, JSON.stringify(showFeedbackInput));
       sessionStorage.setItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN, JSON.stringify(showRawMarkdown));
+      sessionStorage.setItem(SESSION_STORAGE_KEYS.SELECTED_TONE, selectedTone);
       if (error !== null) sessionStorage.setItem(SESSION_STORAGE_KEYS.ERROR, error);
       else sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
 
@@ -178,7 +187,7 @@ export default function QuestionExplainer() {
       else sessionStorage.removeItem(SESSION_STORAGE_KEYS.QUIZ_SCORE);
 
     }
-  }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error, quizTitle, quizQuestions, userAnswers, quizSubmitted, quizScore]);
+  }, [questionInputValue, currentQuestion, explanation, userNotes, feedbackSubmitted, showFeedbackInput, showRawMarkdown, error, selectedTone, quizTitle, quizQuestions, userAnswers, quizSubmitted, quizScore]);
 
 
   const resetQuizState = useCallback((closeDialog: boolean = true) => {
@@ -208,7 +217,7 @@ export default function QuestionExplainer() {
     setError(null);
     setFeedbackSubmitted(false);
     setShowFeedbackInput(false);
-    setShowRawMarkdown(false);
+    // setShowRawMarkdown(false); // Keep raw markdown view preference
     feedbackForm.reset();
     resetQuizState(true); // Reset quiz state and close dialog
 
@@ -217,12 +226,11 @@ export default function QuestionExplainer() {
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.USER_NOTES);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.FEEDBACK_SUBMITTED);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.SHOW_FEEDBACK_INPUT);
-        sessionStorage.removeItem(SESSION_STORAGE_KEYS.SHOW_RAW_MARKDOWN);
         sessionStorage.removeItem(SESSION_STORAGE_KEYS.ERROR);
     }
 
     try {
-      const input: ExplainSTEMConceptInput = { question: values.question };
+      const input: ExplainSTEMConceptInput = { question: values.question, tone: selectedTone };
       const result: ExplainSTEMConceptOutput = await explainSTEMConcept(input);
       setExplanation(result.explanation);
     } catch (err) {
@@ -330,7 +338,7 @@ export default function QuestionExplainer() {
     resetQuizState(false); // Reset previous quiz state but don't close dialog yet
 
     try {
-      const input: GenerateQuizInput = { explanation: explanation, numQuestions: 5 };
+      const input: GenerateQuizInput = { explanation: explanation, numQuestions: 5 }; // Can add tone to quiz generation if needed
       const result: GenerateQuizOutput = await generateQuizFromExplanation(input);
       setQuizTitle(result.quizTitle);
       setQuizQuestions(result.questions);
@@ -376,6 +384,12 @@ export default function QuestionExplainer() {
     resetQuizState(true);
   };
 
+  const toneMapping: { [key in Tone]: string } = {
+    normal: "Normal",
+    genZ: "Gen Z ✨",
+    brutalHonest: "Brutal Honest 🔪"
+  };
+
   return (
     <div className="w-full max-w-2xl mx-auto p-2 md:p-0 space-y-6">
       <Card className="shadow-xl rounded-xl overflow-hidden border-border/80">
@@ -395,7 +409,7 @@ export default function QuestionExplainer() {
                 name="question"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-base font-semibold text-foreground">Your Question/Concept:</FormLabel>
+                    <ShadFormLabel className="text-base font-semibold text-foreground">Your Question/Concept:</ShadFormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="e.g., Explain the concept of black holes, derive the formula for kinetic energy $KE = \\frac{1}{2}mv^2$, or describe how a lithium-ion battery works."
@@ -407,6 +421,26 @@ export default function QuestionExplainer() {
                   </FormItem>
                 )}
               />
+              <FormItem className="space-y-3">
+                <ShadFormLabel className="text-base font-semibold text-foreground">Choose Explanation Tone:</ShadFormLabel>
+                <RadioGroup
+                  value={selectedTone}
+                  onValueChange={(value) => setSelectedTone(value as Tone)}
+                  className="flex flex-col sm:flex-row gap-2 sm:gap-4"
+                >
+                  {TonesForUI.map((tone) => (
+                    <FormItem key={tone} className="flex items-center space-x-2 space-y-0">
+                      <FormControl>
+                        <RadioGroupItem value={tone} id={`tone-${tone}`} />
+                      </FormControl>
+                      <Label htmlFor={`tone-${tone}`} className="font-normal cursor-pointer">
+                        {toneMapping[tone]}
+                      </Label>
+                    </FormItem>
+                  ))}
+                </RadioGroup>
+              </FormItem>
+
               <Button 
                 type="submit" 
                 disabled={isLoadingExplanation || authLoading} 
@@ -445,7 +479,7 @@ export default function QuestionExplainer() {
         <Card className="shadow-xl rounded-xl border-border/80">
           <CardHeader className="bg-card p-6">
             <div className="flex justify-between items-center gap-2">
-              <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation</CardTitle>
+              <CardTitle className="text-2xl font-semibold text-primary">AI-Generated Explanation ({toneMapping[selectedTone]})</CardTitle>
               <div className="flex gap-2">
                 <Button 
                   variant="outline" 
@@ -514,7 +548,7 @@ export default function QuestionExplainer() {
                     name="feedbackText"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-foreground">Your Feedback:</FormLabel>
+                        <ShadFormLabel className="text-base font-semibold text-foreground">Your Feedback:</ShadFormLabel>
                         <FormControl>
                           <Textarea
                             placeholder="Please tell us how we can improve this explanation..."

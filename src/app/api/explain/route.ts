@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { firebaseAdminAuth, firebaseAdminFirestore } from '@/lib/firebase-admin';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { Timestamp } from 'firebase-admin/firestore';
+import type { Tone } from '@/ai/flows/explain-stem-concept'; // Import Tone type
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // As requested: GEMINI_API_KEY
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MAX_REQUESTS = 5;
 const TIME_WINDOW_SECONDS = 60;
 
@@ -14,15 +15,36 @@ if (!GEMINI_API_KEY) {
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-const genZSystemPrompt = `You are an AI assistant explaining STEM concepts. Your audience is Gen Z.
-Your tone should be casual, relatable, engaging, and fun. Use clear language, and if appropriate, sprinkle in some relevant Gen Z slang (like "no cap", "bet", "rizz", "iykyk", "the gag is", "periodt", "vibe check", "main character energy") and emojis (like ✨, 💅, 🧠, 🚀, 🤔, 😅).
-Explain concepts as if you're talking to a friend. Make it understandable and low-key entertaining.
-Structure your explanation well. Use Markdown for formatting:
-- **Headings**: Use Markdown headings (e.g., \`## Sub-topic\`). Start with H2 or H3 for main sections.
-- **Emphasis**: Use bold (\`**text**\`) for key terms or important points, and italics (\`*text*\`) for emphasis.
-- **Lists**: Use bullet points (\`- point\`) or numbered lists (\`1. point\`).
-- **Mathematical Expressions**: For any math, use LaTeX. Inline: \`$...$\`. Block: \`$$...$$\`.
-Keep it real and make learning feel like less of a chore and more of a glow-up for their brain!  Glow up that explanation!`;
+const getSystemInstructionForTone = (tone: Tone = "normal"): string => {
+  const commonInstructions = `
+  Structure your explanation well. Use Markdown for formatting:
+  - **Headings**: Use Markdown headings (e.g., \`## Sub-topic\`). Start with H2 or H3 for main sections.
+  - **Emphasis**: Use bold (\`**text**\`) for key terms or important points, and italics (\`*text*\`) for emphasis.
+  - **Lists**: Use bullet points (\`- point\`) or numbered lists (\`1. point\`).
+  - **Mathematical Expressions**: For any math, use LaTeX. Inline: \`$...$\`. Block: \`$$...$$\`.
+  Ensure the explanation is accurate and clear for the target audience of the chosen tone.
+  `;
+
+  switch (tone) {
+    case "genZ":
+      return `You are an AI assistant explaining STEM concepts. Your audience is Gen Z.
+      Your tone should be casual, relatable, engaging, and fun. Use clear language, and if appropriate, sprinkle in some relevant Gen Z slang (like "no cap", "bet", "rizz", "iykyk", "the gag is", "periodt", "vibe check", "main character energy") and emojis (like ✨, 💅, 🧠, 🚀, 🤔, 😅).
+      Explain concepts as if you're talking to a friend. Make it understandable and low-key entertaining.
+      Keep it real and make learning feel like less of a chore and more of a glow-up for their brain! Glow up that explanation!
+      ${commonInstructions}`;
+    case "brutalHonest":
+      return `You are a brutally honest STEM expert. Your explanations are direct, no-nonsense, and cut straight to the point. You don't sugarcoat things.
+      You might use strong, direct language, but always remain factual and aim to provide the core understanding without fluff. Be concise and impactful.
+      ${commonInstructions}`;
+    case "normal":
+    default:
+      return `You are an expert STEM tutor. Your primary goal is to explain the concept or question in a clear, concise, accurate, and easily understandable manner.
+      Use simple language where possible, but don't shy away from technical terms if they are essential (and explain them if necessary).
+      Present information logically. Ensure all information is factually correct. Maintain a professional yet approachable tone.
+      ${commonInstructions}`;
+  }
+};
+
 
 export async function POST(request: NextRequest) {
   if (!firebaseAdminAuth || !firebaseAdminFirestore) {
@@ -35,7 +57,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { prompt, idToken } = await request.json();
+    const { prompt, idToken, tone } = await request.json() as { prompt: string; idToken: string; tone?: Tone };
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required and must be a string. Spill the tea on what you need explained!' }, { status: 400 });
@@ -44,7 +66,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Firebase ID token is required. Gotta log in, bestie.' }, { status: 400 });
     }
 
-    // 1. Verify Firebase Auth ID token
     let decodedToken;
     try {
       decodedToken = await firebaseAdminAuth.verifyIdToken(idToken);
@@ -54,7 +75,6 @@ export async function POST(request: NextRequest) {
     }
     const userId = decodedToken.uid;
 
-    // 2. Rate Limiting
     const rateLimitCollectionRef = firebaseAdminFirestore.collection('rate_limits').doc(userId).collection('user_requests');
     const now = Timestamp.now();
     const windowStart = Timestamp.fromMillis(now.toMillis() - TIME_WINDOW_SECONDS * 1000);
@@ -70,17 +90,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Rate limit exceeded. You're doing too much! Try again in ${TIME_WINDOW_SECONDS} seconds. Chill for a bit. 💅` }, { status: 429 });
     }
 
-    // If allowed, increment request count (by adding a new request document)
     await rateLimitCollectionRef.add({ timestamp: now });
 
-    // 3. Call Gemini API
     try {
+      const systemInstruction = getSystemInstructionForTone(tone);
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-pro",
-        systemInstruction: genZSystemPrompt, // Added system instruction for Gen Z tone
+        model: "gemini-pro", // Or your preferred model
+        systemInstruction: systemInstruction,
       }); 
       const generationConfig = {
-        temperature: 0.7, // A bit of creativity but still factual
+        temperature: 0.7, 
         topK: 1,
         topP: 1,
         maxOutputTokens: 2048,
@@ -113,7 +132,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in /api/explain POST handler:', error);
-    return NextResponse.json({ error: 'An unexpected server error occurred. Server said 📉.' }, { status: 500 });
+    // Check if error is an instance of Error to access message property safely
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred.';
+    return NextResponse.json({ error: `An unexpected server error occurred. Server said 📉. Details: ${errorMessage}` }, { status: 500 });
   }
 }
-
