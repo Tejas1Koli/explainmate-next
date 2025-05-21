@@ -1,9 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { firebaseAdminAuth } from '@/lib/firebase-admin'; // Removed firebaseAdminFirestore
+import { firebaseAdminAuth } from '@/lib/firebase-admin'; 
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-// import { Timestamp } from 'firebase-admin/firestore'; // No longer needed for rate limiting here
-import type { Tone } from '@/ai/flows/explain-stem-concept'; // Import Tone type
+import type { Tone } from '@/ai/flows/explain-stem-concept'; 
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MAX_REQUESTS = 5;
@@ -15,9 +14,6 @@ if (!GEMINI_API_KEY) {
 
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
-// In-memory store for rate limiting
-// WARNING: This is per-instance in a serverless environment and NOT globally consistent.
-// For global rate limiting without Firestore writes, consider Upstash Redis (free tier).
 const userRequests = new Map<string, { count: number; windowStart: number }>();
 
 const getSystemInstructionForTone = (tone: Tone = "normal"): string => {
@@ -80,7 +76,6 @@ export async function POST(request: NextRequest) {
     }
     const userId = decodedToken.uid;
 
-    // In-memory rate limiting logic
     const now = Date.now();
     const userRecord = userRequests.get(userId);
 
@@ -90,13 +85,12 @@ export async function POST(request: NextRequest) {
       }
       userRecord.count++;
     } else {
-      // New window or user
       userRequests.set(userId, { count: 1, windowStart: now });
     }
-    // Clean up old entries from the map occasionally (optional, simple cleanup)
-    if (userRequests.size > 1000) { // Example threshold
+    
+    if (userRequests.size > 1000) { 
         for (const [key, record] of userRequests.entries()) {
-            if (now - record.windowStart > TIME_WINDOW_SECONDS * 2) { // Clean if older than 2 windows
+            if (now - record.windowStart > TIME_WINDOW_SECONDS * 2) { 
                 userRequests.delete(key);
             }
         }
@@ -106,7 +100,7 @@ export async function POST(request: NextRequest) {
     try {
       const systemInstruction = getSystemInstructionForTone(tone);
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-pro", // Or your preferred model
+        model: "gemini-1.5-flash-latest", // Use a generally available and recent model
         systemInstruction: systemInstruction,
       }); 
       const generationConfig = {
@@ -143,7 +137,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error in /api/explain POST handler:', error);
-    // Check if error is an instance of Error to access message property safely
     const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred.';
     return NextResponse.json({ error: `An unexpected server error occurred. Server said 📉. Details: ${errorMessage}` }, { status: 500 });
   }
