@@ -412,7 +412,7 @@ export default function QuestionExplainer() {
   const toneMapping: { [key in Tone]: string } = {
     normal: "Normal",
     genZ: "Gen Z ✨",
-    brutalHonest: "Brutal Honest 🔪"
+    brutalHonest: "On Point 🎯" // Changed display name here
   };
 
   return (
